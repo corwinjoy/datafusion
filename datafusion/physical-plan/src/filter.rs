@@ -463,6 +463,7 @@ fn collect_new_statistics(
                         null_count: Precision::Exact(0),
                         max_value: Precision::Exact(ScalarValue::Null),
                         min_value: Precision::Exact(ScalarValue::Null),
+                        sum_value: Precision::Exact(ScalarValue::Null),
                         distinct_count: Precision::Exact(0),
                     };
                 };

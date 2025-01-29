@@ -77,21 +77,29 @@ version = "44.0.0"
 ahash = { version = "0.8", default-features = false, features = [
     "runtime-rng",
 ] }
-arrow = { version = "54.0.0", features = [
+
+# Arrow
+arrow = { git = "https://github.com/rok/arrow-rs.git", branch = "encryption-basics", features = [
     "prettyprint",
 ] }
-arrow-array = { version = "54.0.0", default-features = false, features = [
+arrow-array = { git = "https://github.com/rok/arrow-rs.git", branch = "encryption-basics",  default-features = false, features = [
     "chrono-tz",
 ] }
-arrow-buffer = { version = "54.0.0", default-features = false }
-arrow-flight = { version = "54.0.0", features = [
+arrow-buffer = { git = "https://github.com/rok/arrow-rs.git", branch = "encryption-basics",  default-features = false }
+arrow-flight = { git = "https://github.com/rok/arrow-rs.git", branch = "encryption-basics",  features = [
     "flight-sql-experimental",
 ] }
-arrow-ipc = { version = "54.0.0", default-features = false, features = [
+arrow-ipc = { git = "https://github.com/rok/arrow-rs.git", branch = "encryption-basics",  default-features = false, features = [
     "lz4",
 ] }
-arrow-ord = { version = "54.0.0", default-features = false }
-arrow-schema = { version = "54.0.0", default-features = false }
+arrow-ord = { git = "https://github.com/rok/arrow-rs.git", branch = "encryption-basics",  default-features = false }
+arrow-schema = { git = "https://github.com/rok/arrow-rs.git", branch = "encryption-basics",  default-features = false }
+parquet = {  git = "https://github.com/rok/arrow-rs.git", branch = "encryption-basics", default-features = false, features = [
+    "arrow",
+    "async",
+    "object_store",
+] }
+
 async-trait = "0.1.73"
 bigdecimal = "0.4.7"
 bytes = "1.4"
@@ -133,11 +141,7 @@ itertools = "0.14"
 log = "^0.4"
 object_store = { version = "0.11.0", default-features = false }
 parking_lot = "0.12"
-parquet = { version = "54.0.0", default-features = false, features = [
-    "arrow",
-    "async",
-    "object_store",
-] }
+
 pbjson = { version = "0.7.0" }
 # Should match arrow-flight's version of prost.
 prost = "0.13.1"
