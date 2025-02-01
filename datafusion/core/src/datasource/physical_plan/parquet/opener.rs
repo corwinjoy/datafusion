@@ -126,6 +126,7 @@ impl FileOpener for ParquetOpener {
             let options = ArrowReaderOptions::new().with_page_index(enable_page_index);
 
             let mut metadata_timer = file_metrics.metadata_load_time.timer();
+            // The parquet open action happens here, first the metadata
             let metadata =
                 ArrowReaderMetadata::load_async(&mut reader, options.clone()).await?;
             let mut schema = Arc::clone(metadata.schema());
@@ -150,6 +151,8 @@ impl FileOpener for ParquetOpener {
 
             metadata_timer.stop();
 
+            // Then the reader is linked here.
+            // Rok, I also need your help linking here.
             let mut builder =
                 ParquetRecordBatchStreamBuilder::new_with_metadata(reader, metadata);
 
