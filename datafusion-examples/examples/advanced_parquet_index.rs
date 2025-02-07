@@ -61,6 +61,7 @@ use futures::FutureExt;
 use object_store::ObjectStore;
 use tempfile::TempDir;
 use url::Url;
+use datafusion::parquet::encryption::decryption::FileDecryptionProperties;
 
 /// This example demonstrates using low level DataFusion APIs to read only
 /// certain row groups and ranges from parquet files, based on external
@@ -613,6 +614,7 @@ impl AsyncFileReader for ParquetReaderWithCache {
 
     fn get_metadata(
         &mut self,
+        fd: Option<&FileDecryptionProperties>,
     ) -> BoxFuture<'_, datafusion::parquet::errors::Result<Arc<ParquetMetaData>>> {
         println!("get_metadata: {} returning cached metadata", self.filename);
 

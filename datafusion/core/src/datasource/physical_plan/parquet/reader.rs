@@ -28,6 +28,7 @@ use parquet::file::metadata::ParquetMetaData;
 use std::fmt::Debug;
 use std::ops::Range;
 use std::sync::Arc;
+use parquet::encryption::decryption::FileDecryptionProperties;
 
 /// Interface for reading parquet files.
 ///
@@ -114,8 +115,10 @@ impl AsyncFileReader for ParquetFileReader {
 
     fn get_metadata(
         &mut self,
+        file_decryption_properties: Option<
+            &FileDecryptionProperties>
     ) -> BoxFuture<'_, parquet::errors::Result<Arc<ParquetMetaData>>> {
-        self.inner.get_metadata()
+        self.inner.get_metadata(file_decryption_properties)
     }
 }
 

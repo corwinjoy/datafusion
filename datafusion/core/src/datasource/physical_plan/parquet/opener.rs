@@ -43,6 +43,7 @@ use log::debug;
 use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions};
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet::arrow::{ParquetRecordBatchStreamBuilder, ProjectionMask};
+use parquet::encryption::decryption::FileDecryptionProperties;
 
 /// Implements [`FileOpener`] for a parquet file
 pub(super) struct ParquetOpener {
@@ -82,6 +83,8 @@ pub(super) struct ParquetOpener {
     pub enable_bloom_filter: bool,
     /// Schema adapter factory
     pub schema_adapter_factory: Arc<dyn SchemaAdapterFactory>,
+
+    pub file_decryption_properties:  Option<Arc<FileDecryptionProperties>>,
 }
 
 impl FileOpener for ParquetOpener {
@@ -121,6 +124,7 @@ impl FileOpener for ParquetOpener {
         );
         let enable_bloom_filter = self.enable_bloom_filter;
         let limit = self.limit;
+        let file_decryption_properties = self.file_decryption_properties.clone();
 
         Ok(Box::pin(async move {
             let options = ArrowReaderOptions::new().with_page_index(enable_page_index);
@@ -128,7 +132,7 @@ impl FileOpener for ParquetOpener {
             let mut metadata_timer = file_metrics.metadata_load_time.timer();
             // The parquet open action happens here, first the metadata
             let metadata =
-                ArrowReaderMetadata::load_async(&mut reader, options.clone()).await?;
+                ArrowReaderMetadata::load_async(&mut reader, options.clone(), file_decryption_properties.as_deref()).await?;
             let mut schema = Arc::clone(metadata.schema());
 
             if let Some(merged) =

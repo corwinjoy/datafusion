@@ -64,6 +64,7 @@ pub use writer::plan_to_parquet;
 
 use itertools::Itertools;
 use log::debug;
+use parquet::encryption::decryption::FileDecryptionProperties;
 
 /// Execution plan for reading one or more Parquet files.
 ///
@@ -805,6 +806,16 @@ impl ExecutionPlan for ParquetExec {
             .clone()
             .unwrap_or_else(|| Arc::new(DefaultSchemaAdapterFactory));
 
+        let file_decryption_properties: Option<Arc<FileDecryptionProperties>> = match
+            &self.table_parquet_options.global.file_decryption_properties {
+            Some(d) => {
+                let fd =
+                    FileDecryptionProperties::builder(d.footer_key.as_bytes().to_vec()).build().unwrap();
+                Some(Arc::new(fd))}
+            ,
+            None => None
+        };
+
         let opener = ParquetOpener {
             partition_index,
             projection: Arc::from(projection),
@@ -822,6 +833,7 @@ impl ExecutionPlan for ParquetExec {
             enable_page_index: self.enable_page_index(),
             enable_bloom_filter: self.bloom_filter_on_read(),
             schema_adapter_factory,
+            file_decryption_properties: file_decryption_properties,
         };
 
         let stream =

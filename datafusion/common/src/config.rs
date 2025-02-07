@@ -22,11 +22,15 @@ use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::str::FromStr;
-
 use crate::error::_config_err;
 use crate::parsers::CompressionTypeVariant;
 use crate::utils::get_available_parallelism;
 use crate::{DataFusionError, Result};
+
+// Just GRRR, at the rust compiler.
+// I can't seem to figure out how to import parquet here
+// use parquet::encryption::decryption::FileDecryptionProperties;
+
 
 /// A macro that wraps a configuration struct and automatically derives
 /// [`Default`] and [`ConfigField`] for it, allowing it to be used
@@ -177,6 +181,23 @@ macro_rules! config_namespace {
                 }
             }
         }
+    }
+}
+
+config_namespace! {
+    pub struct ConfigFileDecryptionProperties {
+        pub footer_key: String, default = String::new()
+        pub column_keys: String, default = String::new()
+        pub aad_prefix: String, default = String::new()
+    }
+}
+
+config_namespace! {
+    pub struct ConfigFileEncryptionProperties {
+        pub encrypt_footer: bool, default = false
+        pub footer_key: String, default = String::new()
+        pub column_keys: String, default = String::new()
+        pub aad_prefix: String, default = String::new()
     }
 }
 
@@ -549,6 +570,10 @@ config_namespace! {
         /// writing out already in-memory data, such as from a cached
         /// data frame.
         pub maximum_buffered_record_batches_per_stream: usize, default = 2
+
+        // Optional encryption settings
+        pub file_decryption_properties: Option<ConfigFileDecryptionProperties>, default = None
+        pub file_encryption_properties: Option<ConfigFileEncryptionProperties>, default = None
     }
 }
 

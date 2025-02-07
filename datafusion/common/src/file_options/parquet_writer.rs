@@ -40,6 +40,8 @@ use parquet::{
     },
     schema::types::ColumnPath,
 };
+use parquet::data_type::AsBytes;
+use parquet::encryption::encryption::{EncryptionPropertiesBuilder, FileEncryptionProperties};
 
 /// Options for writing parquet files
 #[derive(Clone, Debug)]
@@ -224,6 +226,8 @@ impl ParquetOptions {
             bloom_filter_on_write,
             bloom_filter_fpp,
             bloom_filter_ndv,
+            file_decryption_properties,
+            file_encryption_properties,
 
             // not in WriterProperties
             enable_page_index: _,
@@ -241,6 +245,31 @@ impl ParquetOptions {
             skip_arrow_metadata: _,
         } = self;
 
+        /*
+        pub struct FileEncryptionProperties {
+    encrypt_footer: bool,
+    footer_key: Vec<u8>,
+    column_keys: Option<HashMap<Vec<u8>, Vec<u8>>>,
+    aad_prefix: Option<Vec<u8>>,
+
+
+    config_namespace! {
+    pub struct ConfigFileEncryptionProperties {
+        encrypt_footer: bool, default = false
+        footer_key: String, default = String::new()
+        column_keys: String, default = String::new()
+        aad_prefix: String, default = String::new()
+    }
+}
+}
+         */
+        let fep: Option<FileEncryptionProperties> =
+            match file_encryption_properties {
+                Some(fe) =>
+                    Some(EncryptionPropertiesBuilder::new(fe.encrypt_footer.as_bytes().to_vec()).build()?),
+                None => None,
+        };
+
         let mut builder = WriterProperties::builder()
             .set_data_page_size_limit(*data_pagesize_limit)
             .set_write_batch_size(*write_batch_size)
@@ -257,6 +286,11 @@ impl ParquetOptions {
             .set_column_index_truncate_length(*column_index_truncate_length)
             .set_data_page_row_count_limit(*data_page_row_count_limit)
             .set_bloom_filter_enabled(*bloom_filter_on_write);
+
+        if fep.is_some() {
+            builder = builder.set_file_encryption_properties(fep.unwrap());
+        }
+
 
         builder = {
             #[allow(deprecated)]
@@ -447,7 +481,7 @@ mod tests {
     };
     use std::collections::HashMap;
 
-    use crate::config::{ParquetColumnOptions, ParquetOptions};
+    use crate::config::{ConfigFileEncryptionProperties, ParquetColumnOptions, ParquetOptions};
 
     use super::*;
 
@@ -496,6 +530,8 @@ mod tests {
             bloom_filter_on_write: !defaults.bloom_filter_on_write,
             bloom_filter_fpp: Some(0.42),
             bloom_filter_ndv: Some(42),
+            file_decryption_properties: None,
+            file_encryption_properties: None,
 
             // not in WriterProperties, but itemizing here to not skip newly added props
             enable_page_index: defaults.enable_page_index,
@@ -576,6 +612,19 @@ mod tests {
             HashMap::from([(COL_NAME.into(), configured_col_props)])
         };
 
+        let fep: Option<ConfigFileEncryptionProperties> =
+            match props.file_encryption_properties() {
+                Some(fe) =>
+                    Some(ConfigFileEncryptionProperties{
+                        encrypt_footer: true,
+                        footer_key: String::from_utf8(fe.footer_key.clone()).unwrap(),
+                        column_keys: String::new(),
+                        aad_prefix: String::new(),
+
+                    }),
+                None => None,
+            };
+
         #[allow(deprecated)] // max_statistics_size
         TableParquetOptions {
             global: ParquetOptions {
@@ -600,6 +649,8 @@ mod tests {
                     .unwrap_or_default(),
                 bloom_filter_fpp: default_col_props.bloom_filter_fpp,
                 bloom_filter_ndv: default_col_props.bloom_filter_ndv,
+                file_encryption_properties: fep,
+                file_decryption_properties: None,
 
                 // not in WriterProperties
                 enable_page_index: global_options_defaults.enable_page_index,

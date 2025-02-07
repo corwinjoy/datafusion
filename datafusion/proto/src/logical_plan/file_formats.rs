@@ -505,6 +505,8 @@ impl From<&ParquetOptionsProto> for ParquetOptions {
             schema_force_view_types: proto.schema_force_view_types,
             binary_as_string: proto.binary_as_string,
             skip_arrow_metadata: proto.skip_arrow_metadata,
+            file_decryption_properties: None,
+            file_encryption_properties: None,
         }
     }
 }
