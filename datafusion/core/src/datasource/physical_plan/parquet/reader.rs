@@ -113,11 +113,11 @@ impl AsyncFileReader for ParquetFileReader {
         self.inner.get_byte_ranges(ranges)
     }
 
-    fn get_metadata(
-        &mut self,
+    fn get_metadata<'a>(
+        &'a mut self,
         file_decryption_properties: Option<
-            &FileDecryptionProperties>
-    ) -> BoxFuture<'_, parquet::errors::Result<Arc<ParquetMetaData>>> {
+            &'a FileDecryptionProperties>
+    ) -> BoxFuture<'a, parquet::errors::Result<Arc<ParquetMetaData>>> {
         self.inner.get_metadata(file_decryption_properties)
     }
 }
