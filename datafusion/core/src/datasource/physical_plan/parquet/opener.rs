@@ -128,8 +128,8 @@ impl FileOpener for ParquetOpener {
 
         Ok(Box::pin(async move {
             let mut options = ArrowReaderOptions::new().with_page_index(enable_page_index);
-            if let Some(fd_val) = file_decryption_properties {
-                options = options.with_file_decryption_properties(Arc::unwrap_or_clone(fd_val));
+            if let Some(ref fd_val) = file_decryption_properties {
+                options = options.with_file_decryption_properties((**fd_val).clone());
             }
 
             let mut metadata_timer = file_metrics.metadata_load_time.timer();
@@ -150,9 +150,12 @@ impl FileOpener for ParquetOpener {
                 schema = Arc::new(merged);
             }
 
-            let options = ArrowReaderOptions::new()
+            let mut options = ArrowReaderOptions::new()
                 .with_page_index(enable_page_index)
                 .with_schema(Arc::clone(&schema));
+            if let Some(ref fd_val) = file_decryption_properties {
+                options = options.with_file_decryption_properties((**fd_val).clone());
+            }
             let metadata =
                 ArrowReaderMetadata::try_new(Arc::clone(metadata.metadata()), options)?;
 
