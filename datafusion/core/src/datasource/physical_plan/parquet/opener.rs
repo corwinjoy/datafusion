@@ -127,12 +127,15 @@ impl FileOpener for ParquetOpener {
         let file_decryption_properties = self.file_decryption_properties.clone();
 
         Ok(Box::pin(async move {
-            let options = ArrowReaderOptions::new().with_page_index(enable_page_index);
+            let mut options = ArrowReaderOptions::new().with_page_index(enable_page_index);
+            if let Some(fd_val) = file_decryption_properties {
+                options = options.with_file_decryption_properties(Arc::unwrap_or_clone(fd_val));
+            }
 
             let mut metadata_timer = file_metrics.metadata_load_time.timer();
             // The parquet open action happens here, first the metadata
             let metadata =
-                ArrowReaderMetadata::load_async(&mut reader, options.clone(), file_decryption_properties.as_deref()).await?;
+                ArrowReaderMetadata::load_async(&mut reader, options.clone()).await?;
             let mut schema = Arc::clone(metadata.schema());
 
             if let Some(merged) =
