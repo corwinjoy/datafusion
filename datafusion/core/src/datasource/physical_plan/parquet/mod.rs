@@ -810,16 +810,16 @@ impl ExecutionPlan for ParquetExec {
         let file_decryption_properties: Option<Arc<FileDecryptionProperties>> = match
             &self.table_parquet_options.global.file_decryption_properties {
             Some(d) => {
-                let mut fdb = FileDecryptionProperties::builder(hex::decode(d.footer_key.clone()).expect("failed to decode footer key"));
-                if d.column_keys.len() > 0 {
-                    let eck: EncryptionColumnKeys = serde_json::from_str(&d.column_keys).expect("failed to decode column keys from JSON");
+                let mut fdb = FileDecryptionProperties::builder(hex::decode(d.footer_key_as_hex.clone()).expect("failed to decode footer key"));
+                if d.column_keys_as_json_hex.len() > 0 {
+                    let eck: EncryptionColumnKeys = serde_json::from_str(&d.column_keys_as_json_hex).expect("failed to decode column keys from JSON");
                     for (key, val) in eck.column_keys_as_hex {
                         fdb = fdb.with_column_key(hex::decode(key).expect("Invalid column name"),
                                                   hex::decode(val).expect("Invalid column key"));
                     }
                 }
-                if d.aad_prefix.len() > 0 {
-                    fdb = fdb.with_aad_prefix(d.aad_prefix.clone().into_bytes());
+                if d.aad_prefix_as_hex.len() > 0 {
+                    fdb = fdb.with_aad_prefix(hex::decode(d.aad_prefix_as_hex.clone()).expect("Invalid aad prefix"));
                 }
                 let fd = fdb.build().unwrap();
                 Some(Arc::new(fd))}

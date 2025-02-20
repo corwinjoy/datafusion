@@ -193,18 +193,18 @@ macro_rules! config_namespace {
 
 config_namespace! {
     pub struct ConfigFileDecryptionProperties {
-        pub footer_key: String, default = String::new()
-        pub column_keys: String, default = String::new()
-        pub aad_prefix: String, default = String::new()
+        pub footer_key_as_hex: String, default = String::new()
+        pub column_keys_as_json_hex: String, default = String::new()
+        pub aad_prefix_as_hex: String, default = String::new()
     }
 }
 
 config_namespace! {
     pub struct ConfigFileEncryptionProperties {
         pub encrypt_footer: bool, default = false
-        pub footer_key: String, default = String::new()
-        pub column_keys: String, default = String::new()
-        pub aad_prefix: String, default = String::new()
+        pub footer_key_as_hex: String, default = String::new()
+        pub column_keys_as_json_hex: String, default = String::new()
+        pub aad_prefix_as_hex: String, default = String::new()
     }
 }
 
