@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct EncryptionColumnKeys {
-    pub column_keys: HashMap<String, String>,
+    pub column_keys_as_hex: HashMap<String, String>,
 }
 
 // Just GRRR, at the rust compiler.
