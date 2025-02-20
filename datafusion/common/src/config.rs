@@ -27,6 +27,13 @@ use crate::parsers::CompressionTypeVariant;
 use crate::utils::get_available_parallelism;
 use crate::{DataFusionError, Result};
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct EncryptionColumnKeys {
+    pub column_keys: HashMap<String, String>,
+}
+
 // Just GRRR, at the rust compiler.
 // I can't seem to figure out how to import parquet here
 // use parquet::encryption::decryption::FileDecryptionProperties;

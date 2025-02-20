@@ -29,6 +29,7 @@ mod writer;
 use std::any::Any;
 use std::fmt::Debug;
 use std::sync::Arc;
+use hex;
 
 use crate::datasource::listing::PartitionedFile;
 use crate::datasource::physical_plan::file_stream::FileStream;
@@ -40,7 +41,7 @@ use crate::datasource::schema_adapter::{
     DefaultSchemaAdapterFactory, SchemaAdapterFactory,
 };
 use crate::{
-    config::{ConfigOptions, TableParquetOptions},
+    config::{ConfigOptions, TableParquetOptions, EncryptionColumnKeys},
     error::Result,
     execution::context::TaskContext,
     physical_plan::{
@@ -809,8 +810,18 @@ impl ExecutionPlan for ParquetExec {
         let file_decryption_properties: Option<Arc<FileDecryptionProperties>> = match
             &self.table_parquet_options.global.file_decryption_properties {
             Some(d) => {
-                let fd =
-                    FileDecryptionProperties::builder(d.footer_key.as_bytes().to_vec()).build().unwrap();
+                let mut fdb = FileDecryptionProperties::builder(hex::decode(d.footer_key.clone()).expect("failed to decode footer key"));
+                if d.column_keys.len() > 0 {
+                    let eck: EncryptionColumnKeys = serde_json::from_str(&d.column_keys).expect("failed to decode column keys from JSON");
+                    for (key, val) in eck.column_keys {
+                        fdb = fdb.with_column_key(hex::decode(key).expect("Invalid column name"),
+                                                  hex::decode(val).expect("Invalid column key"));
+                    }
+                }
+                if d.aad_prefix.len() > 0 {
+                    fdb = fdb.with_aad_prefix(d.aad_prefix.clone().into_bytes());
+                }
+                let fd = fdb.build().unwrap();
                 Some(Arc::new(fd))}
             ,
             None => None
