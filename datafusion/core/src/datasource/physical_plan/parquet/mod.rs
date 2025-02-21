@@ -812,10 +812,9 @@ impl ExecutionPlan for ParquetExec {
             Some(d) => {
                 let mut fdb = FileDecryptionProperties::builder(hex::decode(d.footer_key_as_hex.clone()).expect("failed to decode footer key"));
                 if d.column_keys_as_json_hex.len() > 0 {
-                    let eck: EncryptionColumnKeys = serde_json::from_str(&d.column_keys_as_json_hex).expect("failed to decode column keys from JSON");
-                    for (key, val) in eck.column_keys_as_hex {
-                        fdb = fdb.with_column_key(hex::decode(key).expect("Invalid column name"),
-                                                  hex::decode(val).expect("Invalid column key"));
+                    let column_keys = EncryptionColumnKeys::from_json_to_column_keys(&d.column_keys_as_json_hex);
+                    for (key, val) in column_keys {
+                        fdb = fdb.with_column_key(key, val);
                     }
                 }
                 if d.aad_prefix_as_hex.len() > 0 {

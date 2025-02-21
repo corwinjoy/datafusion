@@ -28,10 +28,37 @@ use crate::utils::get_available_parallelism;
 use crate::{DataFusionError, Result};
 
 use serde::{Deserialize, Serialize};
+use hex;
 
 #[derive(Serialize, Deserialize)]
 pub struct EncryptionColumnKeys {
     pub column_keys_as_hex: HashMap<String, String>,
+}
+
+impl EncryptionColumnKeys {
+    pub fn new(column_keys: &HashMap<Vec<u8>, Vec<u8>>) -> Self {
+        let mut column_keys_as_hex: HashMap<String, String> = HashMap::new();
+
+        for (key, value) in column_keys.iter() {
+            column_keys_as_hex.insert(hex::encode(key.clone()), hex::encode(value.clone()));
+        }
+
+        EncryptionColumnKeys {column_keys_as_hex}
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap()
+    }
+
+    pub fn from_json_to_column_keys(s: &String) -> HashMap<Vec<u8>, Vec<u8>> {
+        let eck: EncryptionColumnKeys = serde_json::from_str(s).expect("failed to decode column keys from JSON");
+        let mut hm: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        for (key, val) in eck.column_keys_as_hex {
+            hm.insert(hex::decode(key).expect("Invalid column name"),
+                      hex::decode(val).expect("Invalid column key"));
+        }
+        hm
+    }
 }
 
 // Just GRRR, at the rust compiler.

@@ -57,6 +57,7 @@ arrow-ipc = { workspace = true }
 arrow-schema = { workspace = true }
 base64 = "0.22.1"
 half = { workspace = true }
+hex = "0.4.3"
 hashbrown = { workspace = true }
 indexmap = { workspace = true }
 libc = "0.2.140"
