@@ -41,7 +41,7 @@ use parquet::{
     schema::types::ColumnPath,
 };
 use parquet::data_type::AsBytes;
-use parquet::encryption::encryption::{EncryptionPropertiesBuilder, FileEncryptionProperties};
+use parquet::encryption::encrypt::{EncryptionPropertiesBuilder, FileEncryptionProperties};
 
 /// Options for writing parquet files
 #[derive(Clone, Debug)]
@@ -266,7 +266,7 @@ impl ParquetOptions {
         let fep: Option<FileEncryptionProperties> =
             match file_encryption_properties {
                 Some(fe) =>
-                    Some(EncryptionPropertiesBuilder::new(fe.encrypt_footer.as_bytes().to_vec()).build()?),
+                    Some(EncryptionPropertiesBuilder::new(fe.encrypt_footer.as_bytes().to_vec()).build()),
                 None => None,
         };
 
@@ -288,7 +288,7 @@ impl ParquetOptions {
             .set_bloom_filter_enabled(*bloom_filter_on_write);
 
         if fep.is_some() {
-            builder = builder.set_file_encryption_properties(fep.unwrap());
+            builder = builder.with_file_encryption_properties(fep.unwrap());
         }
 
 
@@ -481,7 +481,7 @@ mod tests {
     };
     use std::collections::HashMap;
 
-    use crate::config::{ConfigFileEncryptionProperties, ParquetColumnOptions, ParquetOptions};
+    use crate::config::{ConfigFileEncryptionProperties, EncryptionColumnKeys, ParquetColumnOptions, ParquetOptions};
 
     use super::*;
 
@@ -614,14 +614,16 @@ mod tests {
 
         let fep: Option<ConfigFileEncryptionProperties> =
             match props.file_encryption_properties() {
-                Some(fe) =>
-                    Some(ConfigFileEncryptionProperties{
+                Some(fe) => {
+                    // round trip not supported yet
+                    Some(ConfigFileEncryptionProperties {
                         encrypt_footer: true,
-                        footer_key: String::from_utf8(fe.footer_key.clone()).unwrap(),
-                        column_keys: String::new(),
-                        aad_prefix: String::new(),
+                        footer_key_as_hex: String::new(),
+                        column_keys_as_json_hex: String::new(),
+                        aad_prefix_as_hex: String::new(),
 
-                    }),
+                    })
+                },
                 None => None,
             };
 

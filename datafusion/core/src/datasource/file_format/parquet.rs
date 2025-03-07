@@ -2143,7 +2143,7 @@ mod tests {
         let file = File::open(path).await.unwrap();
         let options = ArrowReaderOptions::new().with_page_index(true);
         let builder =
-            ParquetRecordBatchStreamBuilder::new_with_options(file, options.clone(), None)
+            ParquetRecordBatchStreamBuilder::new_with_options(file, options.clone())
                 .await
                 .unwrap()
                 .metadata()
@@ -2153,7 +2153,7 @@ mod tests {
         let path = format!("{testdata}/alltypes_tiny_pages_plain.parquet");
         let file = File::open(path).await.unwrap();
 
-        let builder = ParquetRecordBatchStreamBuilder::new_with_options(file, options, None)
+        let builder = ParquetRecordBatchStreamBuilder::new_with_options(file, options)
             .await
             .unwrap()
             .metadata()
