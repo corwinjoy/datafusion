@@ -288,7 +288,7 @@ impl ParquetOptions {
             .set_bloom_filter_enabled(*bloom_filter_on_write);
 
         if fep.is_some() {
-            builder = builder.with_file_encryption_properties(fep.unwrap());
+            builder = builder.set_file_encryption_properties(&fep.unwrap());
         }
 
 
