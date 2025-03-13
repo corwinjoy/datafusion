@@ -15,7 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use arrow_buffer::{IntervalDayTime, IntervalMonthDayNano, OffsetBuffer};
+use arrow::array::types::{IntervalDayTime, IntervalMonthDayNano};
+use arrow::buffer::OffsetBuffer;
 use async_recursion::async_recursion;
 use datafusion::arrow::array::MapArray;
 use datafusion::arrow::datatypes::{
@@ -23,10 +24,10 @@ use datafusion::arrow::datatypes::{
 };
 use datafusion::common::{
     not_impl_datafusion_err, not_impl_err, plan_datafusion_err, plan_err,
-    substrait_datafusion_err, substrait_err, DFSchema, DFSchemaRef,
+    substrait_datafusion_err, substrait_err, DFSchema, DFSchemaRef, TableReference,
 };
 use datafusion::datasource::provider_as_source;
-use datafusion::logical_expr::expr::{Exists, InSubquery, Sort};
+use datafusion::logical_expr::expr::{Exists, InSubquery, Sort, WindowFunctionParams};
 
 use datafusion::logical_expr::{
     Aggregate, BinaryExpr, Case, Cast, EmptyRelation, Expr, ExprSchemable, Extension,
@@ -66,10 +67,9 @@ use datafusion::logical_expr::{
     WindowFrameBound, WindowFrameUnits, WindowFunctionDefinition,
 };
 use datafusion::prelude::{lit, JoinType};
-use datafusion::sql::TableReference;
 use datafusion::{
-    error::Result, logical_expr::utils::split_conjunction, prelude::Column,
-    scalar::ScalarValue,
+    arrow, error::Result, logical_expr::utils::split_conjunction,
+    logical_expr::utils::split_conjunction_owned, prelude::Column, scalar::ScalarValue,
 };
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -104,10 +104,11 @@ use substrait::proto::{
     rel::RelType,
     rel_common,
     sort_field::{SortDirection, SortKind::*},
-    AggregateFunction, AggregateRel, ConsistentPartitionWindowRel, CrossRel, ExchangeRel,
-    Expression, ExtendedExpression, ExtensionLeafRel, ExtensionMultiRel,
-    ExtensionSingleRel, FetchRel, FilterRel, FunctionArgument, JoinRel, NamedStruct,
-    Plan, ProjectRel, ReadRel, Rel, RelCommon, SetRel, SortField, SortRel, Type,
+    AggregateFunction, AggregateRel, ConsistentPartitionWindowRel, CrossRel,
+    DynamicParameter, ExchangeRel, Expression, ExtendedExpression, ExtensionLeafRel,
+    ExtensionMultiRel, ExtensionSingleRel, FetchRel, FilterRel, FunctionArgument,
+    JoinRel, NamedStruct, Plan, ProjectRel, ReadRel, Rel, RelCommon, SetRel, SortField,
+    SortRel, Type,
 };
 
 #[async_trait]
@@ -390,6 +391,14 @@ pub trait SubstraitConsumer: Send + Sync + Sized {
 
     async fn consume_enum(&self, _expr: &Enum, _input_schema: &DFSchema) -> Result<Expr> {
         not_impl_err!("Enum expression not supported")
+    }
+
+    async fn consume_dynamic_parameter(
+        &self,
+        _expr: &DynamicParameter,
+        _input_schema: &DFSchema,
+    ) -> Result<Expr> {
+        not_impl_err!("Dynamic Parameter expression not supported")
     }
 
     // User-Defined Functionality
@@ -1327,8 +1336,16 @@ pub async fn from_read_rel(
         table_ref: TableReference,
         schema: DFSchema,
         projection: &Option<MaskExpression>,
+        filter: &Option<Box<Expression>>,
     ) -> Result<LogicalPlan> {
         let schema = schema.replace_qualifier(table_ref.clone());
+
+        let filters = if let Some(f) = filter {
+            let filter_expr = consumer.consume_expression(f, &schema).await?;
+            split_conjunction_owned(filter_expr)
+        } else {
+            vec![]
+        };
 
         let plan = {
             let provider = match consumer.resolve_table_ref(&table_ref).await? {
@@ -1336,10 +1353,11 @@ pub async fn from_read_rel(
                 _ => return plan_err!("No table named '{table_ref}'"),
             };
 
-            LogicalPlanBuilder::scan(
+            LogicalPlanBuilder::scan_with_filters(
                 table_ref,
                 provider_as_source(Arc::clone(&provider)),
                 None,
+                filters,
             )?
             .build()?
         };
@@ -1382,6 +1400,7 @@ pub async fn from_read_rel(
                 table_reference,
                 substrait_schema,
                 &read.projection,
+                &read.filter,
             )
             .await
         }
@@ -1464,6 +1483,7 @@ pub async fn from_read_rel(
                 table_reference,
                 substrait_schema,
                 &read.projection,
+                &read.filter,
             )
             .await
         }
@@ -1944,13 +1964,6 @@ pub async fn from_substrait_agg_func(
 
     let args = from_substrait_func_args(consumer, &f.arguments, input_schema).await?;
 
-    // deal with situation that count(*) got no arguments
-    let args = if udaf.name() == "count" && args.is_empty() {
-        vec![Expr::Literal(ScalarValue::Int64(Some(1)))]
-    } else {
-        args
-    };
-
     Ok(Arc::new(Expr::AggregateFunction(
         expr::AggregateFunction::new_udf(udaf, args, distinct, filter, order_by, None),
     )))
@@ -1995,6 +2008,9 @@ pub async fn from_substrait_rex(
             }
             RexType::Nested(expr) => consumer.consume_nested(expr, input_schema).await,
             RexType::Enum(expr) => consumer.consume_enum(expr, input_schema).await,
+            RexType::DynamicParameter(expr) => {
+                consumer.consume_dynamic_parameter(expr, input_schema).await
+            }
         },
         None => substrait_err!("Expression must set rex_type: {:?}", expression),
     }
@@ -2223,12 +2239,19 @@ pub async fn from_window_function(
 
     Ok(Expr::WindowFunction(expr::WindowFunction {
         fun,
-        args: from_substrait_func_args(consumer, &window.arguments, input_schema).await?,
-        partition_by: from_substrait_rex_vec(consumer, &window.partitions, input_schema)
+        params: WindowFunctionParams {
+            args: from_substrait_func_args(consumer, &window.arguments, input_schema)
+                .await?,
+            partition_by: from_substrait_rex_vec(
+                consumer,
+                &window.partitions,
+                input_schema,
+            )
             .await?,
-        order_by,
-        window_frame,
-        null_treatment: None,
+            order_by,
+            window_frame,
+            null_treatment: None,
+        },
     }))
 }
 
@@ -3279,13 +3302,14 @@ mod test {
         from_substrait_literal_without_names, from_substrait_rex,
         DefaultSubstraitConsumer,
     };
-    use arrow_buffer::IntervalMonthDayNano;
+    use arrow::array::types::IntervalMonthDayNano;
+    use datafusion::arrow;
     use datafusion::common::DFSchema;
     use datafusion::error::Result;
     use datafusion::execution::SessionState;
     use datafusion::prelude::{Expr, SessionContext};
     use datafusion::scalar::ScalarValue;
-    use std::sync::OnceLock;
+    use std::sync::LazyLock;
     use substrait::proto::expression::literal::{
         interval_day_to_second, IntervalCompound, IntervalDayToSecond,
         IntervalYearToMonth, LiteralType,
@@ -3293,11 +3317,12 @@ mod test {
     use substrait::proto::expression::window_function::BoundsType;
     use substrait::proto::expression::Literal;
 
-    static TEST_SESSION_STATE: OnceLock<SessionState> = OnceLock::new();
-    static TEST_EXTENSIONS: OnceLock<Extensions> = OnceLock::new();
+    static TEST_SESSION_STATE: LazyLock<SessionState> =
+        LazyLock::new(|| SessionContext::default().state());
+    static TEST_EXTENSIONS: LazyLock<Extensions> = LazyLock::new(Extensions::default);
     fn test_consumer() -> DefaultSubstraitConsumer<'static> {
-        let extensions = TEST_EXTENSIONS.get_or_init(Extensions::default);
-        let state = TEST_SESSION_STATE.get_or_init(|| SessionContext::default().state());
+        let extensions = &TEST_EXTENSIONS;
+        let state = &TEST_SESSION_STATE;
         DefaultSubstraitConsumer::new(extensions, state)
     }
 
@@ -3360,7 +3385,7 @@ mod test {
 
         match from_substrait_rex(&consumer, &substrait, &DFSchema::empty()).await? {
             Expr::WindowFunction(window_function) => {
-                assert_eq!(window_function.order_by.len(), 1)
+                assert_eq!(window_function.params.order_by.len(), 1)
             }
             _ => panic!("expr was not a WindowFunction"),
         };

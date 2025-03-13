@@ -22,21 +22,24 @@ use crate::planner::{ContextProvider, PlannerContext, SqlToRel};
 use crate::utils::{
     check_columns_satisfy_exprs, extract_aliases, rebase_expr, resolve_aliases_to_exprs,
     resolve_columns, resolve_positions_to_exprs, rewrite_recursive_unnests_bottom_up,
+    CheckColumnsSatisfyExprsPurpose,
 };
 
+use datafusion_common::error::DataFusionErrorBuilder;
 use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
-use datafusion_common::{not_impl_err, plan_err, Result};
+use datafusion_common::{not_impl_err, plan_err, Column, Result};
 use datafusion_common::{RecursionUnnestOption, UnnestOptions};
 use datafusion_expr::expr::{Alias, PlannedReplaceSelectItem, WildcardOptions};
 use datafusion_expr::expr_rewriter::{
     normalize_col, normalize_col_with_schemas_and_ambiguity_check, normalize_sorts,
 };
 use datafusion_expr::utils::{
-    expr_as_column_expr, expr_to_columns, find_aggregate_exprs, find_window_exprs,
+    expand_qualified_wildcard, expand_wildcard, expr_as_column_expr, expr_to_columns,
+    find_aggregate_exprs, find_window_exprs,
 };
 use datafusion_expr::{
-    qualified_wildcard_with_options, wildcard_with_options, Aggregate, Expr, Filter,
-    GroupingSet, LogicalPlan, LogicalPlanBuilder, Partitioning,
+    Aggregate, Expr, Filter, GroupingSet, LogicalPlan, LogicalPlanBuilder,
+    LogicalPlanBuilderOptions, Partitioning,
 };
 
 use indexmap::IndexMap;
@@ -88,6 +91,12 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
             empty_from,
             planner_context,
         )?;
+
+        // TOOD: remove this after Expr::Wildcard is removed
+        #[allow(deprecated)]
+        for expr in &select_exprs {
+            debug_assert!(!matches!(expr, Expr::Wildcard { .. }));
+        }
 
         // Having and group by clause may reference aliases defined in select projection
         let projected_plan = self.project(base_plan.clone(), select_exprs.clone())?;
@@ -369,7 +378,10 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                 let agg_expr = agg.aggr_expr.clone();
                 let (new_input, new_group_by_exprs) =
                     self.try_process_group_by_unnest(agg)?;
+                let options = LogicalPlanBuilderOptions::new()
+                    .with_add_implicit_group_by_exprs(true);
                 LogicalPlanBuilder::from(new_input)
+                    .with_options(options)
                     .aggregate(new_group_by_exprs, agg_expr)?
                     .build()
             }
@@ -573,10 +585,15 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         empty_from: bool,
         planner_context: &mut PlannerContext,
     ) -> Result<Vec<Expr>> {
-        projection
-            .into_iter()
-            .map(|expr| self.sql_select_to_rex(expr, plan, empty_from, planner_context))
-            .collect::<Result<Vec<Expr>>>()
+        let mut prepared_select_exprs = vec![];
+        let mut error_builder = DataFusionErrorBuilder::new();
+        for expr in projection {
+            match self.sql_select_to_rex(expr, plan, empty_from, planner_context) {
+                Ok(expr) => prepared_select_exprs.extend(expr),
+                Err(err) => error_builder.add_error(err),
+            }
+        }
+        error_builder.error_or(prepared_select_exprs)
     }
 
     /// Generate a relational expression from a select SQL expression
@@ -586,7 +603,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         plan: &LogicalPlan,
         empty_from: bool,
         planner_context: &mut PlannerContext,
-    ) -> Result<Expr> {
+    ) -> Result<Vec<Expr>> {
         match sql {
             SelectItem::UnnamedExpr(expr) => {
                 let expr = self.sql_to_expr(expr, plan.schema(), planner_context)?;
@@ -595,7 +612,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                     &[&[plan.schema()]],
                     &plan.using_columns()?,
                 )?;
-                Ok(col)
+                Ok(vec![col])
             }
             SelectItem::ExprWithAlias { expr, alias } => {
                 let select_expr =
@@ -611,7 +628,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                     Expr::Column(column) if column.name.eq(&name) => col,
                     _ => col.alias(name),
                 };
-                Ok(expr)
+                Ok(vec![expr])
             }
             SelectItem::Wildcard(options) => {
                 Self::check_wildcard_options(&options)?;
@@ -624,7 +641,17 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                     planner_context,
                     options,
                 )?;
-                Ok(wildcard_with_options(planned_options))
+
+                let expanded =
+                    expand_wildcard(plan.schema(), plan, Some(&planned_options))?;
+
+                // If there is a REPLACE statement, replace that column with the given
+                // replace expression. Column name remains the same.
+                if let Some(replace) = planned_options.replace {
+                    replace_columns(expanded, &replace)
+                } else {
+                    Ok(expanded)
+                }
             }
             SelectItem::QualifiedWildcard(object_name, options) => {
                 Self::check_wildcard_options(&options)?;
@@ -635,7 +662,19 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                     planner_context,
                     options,
                 )?;
-                Ok(qualified_wildcard_with_options(qualifier, planned_options))
+
+                let expanded = expand_qualified_wildcard(
+                    &qualifier,
+                    plan.schema(),
+                    Some(&planned_options),
+                )?;
+                // If there is a REPLACE statement, replace that column with the given
+                // replace expression. Column name remains the same.
+                if let Some(replace) = planned_options.replace {
+                    replace_columns(expanded, &replace)
+                } else {
+                    Ok(expanded)
+                }
             }
         }
     }
@@ -687,7 +726,10 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                         planner_context,
                     )
                 })
-                .collect::<Result<Vec<_>>>()?;
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .flatten()
+                .collect();
             let planned_replace = PlannedReplaceSelectItem {
                 items: replace.items.into_iter().map(|i| *i).collect(),
                 planned_expressions: replace_expr,
@@ -737,7 +779,10 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         aggr_exprs: &[Expr],
     ) -> Result<(LogicalPlan, Vec<Expr>, Option<Expr>)> {
         // create the aggregate plan
+        let options =
+            LogicalPlanBuilderOptions::new().with_add_implicit_group_by_exprs(true);
         let plan = LogicalPlanBuilder::from(input.clone())
+            .with_options(options)
             .aggregate(group_by_exprs.to_vec(), aggr_exprs.to_vec())?
             .build()?;
         let group_by_exprs = if let LogicalPlan::Aggregate(agg) = &plan {
@@ -796,7 +841,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         check_columns_satisfy_exprs(
             &column_exprs_post_aggr,
             &select_exprs_post_aggr,
-            "Projection references non-aggregate values",
+            CheckColumnsSatisfyExprsPurpose::ProjectionMustReferenceAggregate,
         )?;
 
         // Rewrite the HAVING expression to use the columns produced by the
@@ -808,7 +853,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
             check_columns_satisfy_exprs(
                 &column_exprs_post_aggr,
                 std::slice::from_ref(&having_expr_post_aggr),
-                "HAVING clause references non-aggregate values",
+                CheckColumnsSatisfyExprsPurpose::HavingMustReferenceAggregate,
             )?;
 
             Some(having_expr_post_aggr)
@@ -869,4 +914,27 @@ fn match_window_definitions(
         }
     }
     Ok(())
+}
+
+/// If there is a REPLACE statement in the projected expression in the form of
+/// "REPLACE (some_column_within_an_expr AS some_column)", this function replaces
+/// that column with the given replace expression. Column name remains the same.
+/// Multiple REPLACEs are also possible with comma separations.
+fn replace_columns(
+    mut exprs: Vec<Expr>,
+    replace: &PlannedReplaceSelectItem,
+) -> Result<Vec<Expr>> {
+    for expr in exprs.iter_mut() {
+        if let Expr::Column(Column { name, .. }) = expr {
+            if let Some((_, new_expr)) = replace
+                .items()
+                .iter()
+                .zip(replace.expressions().iter())
+                .find(|(item, _)| item.column_name.value == *name)
+            {
+                *expr = new_expr.clone().alias(name.clone())
+            }
+        }
+    }
+    Ok(exprs)
 }

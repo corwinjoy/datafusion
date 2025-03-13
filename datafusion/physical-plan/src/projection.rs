@@ -167,6 +167,17 @@ impl DisplayAs for ProjectionExec {
 
                 write!(f, "ProjectionExec: expr=[{}]", expr.join(", "))
             }
+            DisplayFormatType::TreeRender => {
+                for (i, (e, alias)) in self.expr().iter().enumerate() {
+                    let e = e.to_string();
+                    if &e == alias {
+                        writeln!(f, "expr{i}={e}")?;
+                    } else {
+                        writeln!(f, "{alias}={e}")?;
+                    }
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -1003,7 +1014,7 @@ mod tests {
     use crate::common::collect;
     use crate::test;
 
-    use arrow_schema::DataType;
+    use arrow::datatypes::DataType;
     use datafusion_common::ScalarValue;
 
     use datafusion_expr::Operator;

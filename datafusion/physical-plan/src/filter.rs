@@ -329,6 +329,9 @@ impl DisplayAs for FilterExec {
                 };
                 write!(f, "FilterExec: {}{}", self.predicate, display_projections)
             }
+            DisplayFormatType::TreeRender => {
+                write!(f, "predicate={}", self.predicate)
+            }
         }
     }
 }
@@ -624,9 +627,7 @@ mod tests {
     use crate::expressions::*;
     use crate::test;
     use crate::test::exec::StatisticsExec;
-
-    use arrow::datatypes::{Field, Schema};
-    use arrow_schema::{UnionFields, UnionMode};
+    use arrow::datatypes::{Field, Schema, UnionFields, UnionMode};
     use datafusion_common::ScalarValue;
 
     #[tokio::test]
@@ -1091,6 +1092,7 @@ mod tests {
                 ColumnStatistics {
                     min_value: Precision::Exact(ScalarValue::Null),
                     max_value: Precision::Exact(ScalarValue::Null),
+                    sum_value: Precision::Exact(ScalarValue::Null),
                     distinct_count: Precision::Exact(0),
                     null_count: Precision::Exact(0),
                     sum_value: Precision::Exact(ScalarValue::Null),
@@ -1098,6 +1100,7 @@ mod tests {
                 ColumnStatistics {
                     min_value: Precision::Exact(ScalarValue::Null),
                     max_value: Precision::Exact(ScalarValue::Null),
+                    sum_value: Precision::Exact(ScalarValue::Null),
                     distinct_count: Precision::Exact(0),
                     null_count: Precision::Exact(0),
                     sum_value: Precision::Exact(ScalarValue::Null),

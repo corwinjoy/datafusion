@@ -91,9 +91,12 @@ impl ScalarUDF {
     where
         F: ScalarUDFImpl + 'static,
     {
-        Self {
-            inner: Arc::new(fun),
-        }
+        Self::new_from_shared_impl(Arc::new(fun))
+    }
+
+    /// Create a new `ScalarUDF` from a `[ScalarUDFImpl]` trait object
+    pub fn new_from_shared_impl(fun: Arc<dyn ScalarUDFImpl>) -> ScalarUDF {
+        Self { inner: fun }
     }
 
     /// Return the underlying [`ScalarUDFImpl`] trait object for this function
@@ -169,28 +172,12 @@ impl ScalarUDF {
     ///
     ///  # Notes
     ///
-    /// If a function implement [`ScalarUDFImpl::return_type_from_exprs`],
+    /// If a function implement [`ScalarUDFImpl::return_type_from_args`],
     /// its [`ScalarUDFImpl::return_type`] should raise an error.
     ///
     /// See [`ScalarUDFImpl::return_type`] for more details.
     pub fn return_type(&self, arg_types: &[DataType]) -> Result<DataType> {
         self.inner.return_type(arg_types)
-    }
-
-    /// The datatype this function returns given the input argument input types.
-    /// This function is used when the input arguments are [`Expr`]s.
-    ///
-    ///
-    /// See [`ScalarUDFImpl::return_type_from_exprs`] for more details.
-    #[allow(deprecated)]
-    pub fn return_type_from_exprs(
-        &self,
-        args: &[Expr],
-        schema: &dyn ExprSchema,
-        arg_types: &[DataType],
-    ) -> Result<DataType> {
-        // If the implementation provides a return_type_from_exprs, use it
-        self.inner.return_type_from_exprs(args, schema, arg_types)
     }
 
     /// Return the datatype this function returns given the input argument types.
@@ -222,11 +209,13 @@ impl ScalarUDF {
         self.inner.is_nullable(args, schema)
     }
 
+    #[deprecated(since = "46.0.0", note = "Use `invoke_with_args` instead")]
     pub fn invoke_batch(
         &self,
         args: &[ColumnarValue],
         number_rows: usize,
     ) -> Result<ColumnarValue> {
+        #[allow(deprecated)]
         self.inner.invoke_batch(args, number_rows)
     }
 
@@ -241,7 +230,7 @@ impl ScalarUDF {
     ///
     /// Note: This method is deprecated and will be removed in future releases.
     /// User defined functions should implement [`Self::invoke_with_args`] instead.
-    #[deprecated(since = "42.1.0", note = "Use `invoke_batch` instead")]
+    #[deprecated(since = "42.1.0", note = "Use `invoke_with_args` instead")]
     pub fn invoke_no_args(&self, number_rows: usize) -> Result<ColumnarValue> {
         #[allow(deprecated)]
         self.inner.invoke_no_args(number_rows)
@@ -249,7 +238,7 @@ impl ScalarUDF {
 
     /// Returns a `ScalarFunctionImplementation` that can invoke the function
     /// during execution
-    #[deprecated(since = "42.0.0", note = "Use `invoke_batch` instead")]
+    #[deprecated(since = "42.0.0", note = "Use `invoke_with_args` instead")]
     pub fn fun(&self) -> ScalarFunctionImplementation {
         let captured = Arc::clone(&self.inner);
         #[allow(deprecated)]
@@ -346,7 +335,7 @@ pub struct ScalarFunctionArgs<'a> {
     pub args: Vec<ColumnarValue>,
     /// The number of rows in record batch being evaluated
     pub number_rows: usize,
-    /// The return type of the scalar function returned (from `return_type` or `return_type_from_exprs`)
+    /// The return type of the scalar function returned (from `return_type` or `return_type_from_args`)
     /// when creating the physical expression from the logical expression
     pub return_type: &'a DataType,
 }
@@ -430,7 +419,7 @@ impl ReturnInfo {
 /// # Basic Example
 /// ```
 /// # use std::any::Any;
-/// # use std::sync::OnceLock;
+/// # use std::sync::LazyLock;
 /// # use arrow::datatypes::DataType;
 /// # use datafusion_common::{DataFusionError, plan_err, Result};
 /// # use datafusion_expr::{col, ColumnarValue, Documentation, ScalarFunctionArgs, Signature, Volatility};
@@ -450,14 +439,14 @@ impl ReturnInfo {
 ///   }
 /// }
 ///
-/// static DOCUMENTATION: OnceLock<Documentation> = OnceLock::new();
-///
-/// fn get_doc() -> &'static Documentation {
-///     DOCUMENTATION.get_or_init(|| {
+/// static DOCUMENTATION: LazyLock<Documentation> = LazyLock::new(|| {
 ///         Documentation::builder(DOC_SECTION_MATH, "Add one to an int32", "add_one(2)")
 ///             .with_argument("arg1", "The int32 number to add one to")
 ///             .build()
-///     })
+///     });
+///
+/// fn get_doc() -> &'static Documentation {
+///     &DOCUMENTATION
 /// }
 ///
 /// /// Implement the ScalarUDFImpl trait for AddOne
@@ -535,16 +524,6 @@ pub trait ScalarUDFImpl: Debug + Send + Sync {
     /// [`DataFusionError::Internal`]: datafusion_common::DataFusionError::Internal
     fn return_type(&self, arg_types: &[DataType]) -> Result<DataType>;
 
-    #[deprecated(since = "45.0.0", note = "Use `return_type_from_args` instead")]
-    fn return_type_from_exprs(
-        &self,
-        _args: &[Expr],
-        _schema: &dyn ExprSchema,
-        arg_types: &[DataType],
-    ) -> Result<DataType> {
-        self.return_type(arg_types)
-    }
-
     /// What type will be returned by this function, given the arguments?
     ///
     /// By default, this function calls [`Self::return_type`] with the
@@ -610,6 +589,7 @@ pub trait ScalarUDFImpl: Debug + Send + Sync {
     /// User defined functions should implement [`Self::invoke_with_args`] instead.
     ///
     /// See <https://github.com/apache/datafusion/issues/13515> for more details.
+    #[deprecated(since = "46.0.0", note = "Use `invoke_with_args` instead")]
     fn invoke_batch(
         &self,
         args: &[ColumnarValue],
@@ -640,6 +620,7 @@ pub trait ScalarUDFImpl: Debug + Send + Sync {
     /// [`ColumnarValue::values_to_arrays`] can be used to convert the arguments
     /// to arrays, which will likely be simpler code, but be slower.
     fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+        #[allow(deprecated)]
         self.invoke_batch(&args.args, args.number_rows)
     }
 
@@ -882,27 +863,12 @@ impl ScalarUDFImpl for AliasedScalarUDFImpl {
         &self.aliases
     }
 
-    #[allow(deprecated)]
-    fn return_type_from_exprs(
-        &self,
-        args: &[Expr],
-        schema: &dyn ExprSchema,
-        arg_types: &[DataType],
-    ) -> Result<DataType> {
-        self.inner.return_type_from_exprs(args, schema, arg_types)
-    }
-
     fn return_type_from_args(&self, args: ReturnTypeArgs) -> Result<ReturnInfo> {
         self.inner.return_type_from_args(args)
     }
 
-    fn invoke_batch(
-        &self,
-        args: &[ColumnarValue],
-        number_rows: usize,
-    ) -> Result<ColumnarValue> {
-        #[allow(deprecated)]
-        self.inner.invoke_batch(args, number_rows)
+    fn invoke_with_args(&self, args: ScalarFunctionArgs) -> Result<ColumnarValue> {
+        self.inner.invoke_with_args(args)
     }
 
     fn simplify(
@@ -977,6 +943,7 @@ pub mod scalar_doc_sections {
             DOC_SECTION_STRUCT,
             DOC_SECTION_MAP,
             DOC_SECTION_HASHING,
+            DOC_SECTION_UNION,
             DOC_SECTION_OTHER,
         ]
     }
@@ -993,6 +960,7 @@ pub mod scalar_doc_sections {
             DOC_SECTION_STRUCT,
             DOC_SECTION_MAP,
             DOC_SECTION_HASHING,
+            DOC_SECTION_UNION,
             DOC_SECTION_OTHER,
         ]
     }
@@ -1066,5 +1034,11 @@ The following regular expression functions are supported:"#,
         include: true,
         label: "Other Functions",
         description: None,
+    };
+
+    pub const DOC_SECTION_UNION: DocSection = DocSection {
+        include: true,
+        label: "Union Functions",
+        description: Some("Functions to work with the union data type, also know as tagged unions, variant types, enums or sum types. Note: Not related to the SQL UNION operator"),
     };
 }
