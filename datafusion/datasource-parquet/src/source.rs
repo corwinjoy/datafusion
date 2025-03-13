@@ -42,6 +42,7 @@ use datafusion_physical_plan::DisplayFormatType;
 use itertools::Itertools;
 use log::debug;
 use object_store::ObjectStore;
+use parquet::encryption::decryption::FileDecryptionProperties;
 
 /// Execution plan for reading one or more Parquet files.
 ///
@@ -480,6 +481,13 @@ impl FileSource for ParquetSource {
                 Arc::new(DefaultParquetFileReaderFactory::new(object_store)) as _
             });
 
+        let mut file_decryption_properties:  Option<Arc<FileDecryptionProperties>> = None;
+        if self.table_parquet_options().global.file_decryption_properties.is_some() {
+            let fdp: FileDecryptionProperties =
+                self.table_parquet_options().global.file_decryption_properties.clone().unwrap().into();
+            file_decryption_properties = Some(Arc::new(fdp));
+        }
+
         Arc::new(ParquetOpener {
             partition_index: partition,
             projection: Arc::from(projection),
@@ -499,6 +507,7 @@ impl FileSource for ParquetSource {
             enable_page_index: self.enable_page_index(),
             enable_bloom_filter: self.bloom_filter_on_read(),
             schema_adapter_factory,
+            file_decryption_properties
         })
     }
 

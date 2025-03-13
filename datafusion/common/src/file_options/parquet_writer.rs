@@ -227,7 +227,7 @@ impl ParquetOptions {
             bloom_filter_on_write,
             bloom_filter_fpp,
             bloom_filter_ndv,
-            file_decryption_properties,
+            file_decryption_properties: _,
             file_encryption_properties,
 
             // not in WriterProperties
@@ -483,7 +483,7 @@ mod tests {
     };
     use std::collections::HashMap;
 
-    use crate::config::{ConfigFileEncryptionProperties, EncryptionColumnKeys, ParquetColumnOptions, ParquetOptions};
+    use crate::config::{ConfigFileEncryptionProperties, ParquetColumnOptions, ParquetOptions};
 
     use super::*;
 
@@ -618,14 +618,7 @@ mod tests {
         let fep: Option<ConfigFileEncryptionProperties> =
             match props.file_encryption_properties() {
                 Some(fe) => {
-                    // round trip not supported yet
-                    Some(ConfigFileEncryptionProperties {
-                        encrypt_footer: true,
-                        footer_key_as_hex: String::new(),
-                        column_keys_as_json_hex: String::new(),
-                        aad_prefix_as_hex: String::new(),
-
-                    })
+                    Some(fe.clone().into())
                 },
                 None => None,
             };

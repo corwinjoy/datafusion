@@ -20,7 +20,6 @@
 //! [`FileSource`]: datafusion_datasource::file::FileSource
 
 pub use datafusion_datasource_parquet::*;
-use hex;
 
 #[cfg(test)]
 mod tests {

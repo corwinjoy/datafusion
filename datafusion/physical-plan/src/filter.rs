@@ -1095,7 +1095,6 @@ mod tests {
                     sum_value: Precision::Exact(ScalarValue::Null),
                     distinct_count: Precision::Exact(0),
                     null_count: Precision::Exact(0),
-                    sum_value: Precision::Exact(ScalarValue::Null),
                 },
                 ColumnStatistics {
                     min_value: Precision::Exact(ScalarValue::Null),
@@ -1103,7 +1102,6 @@ mod tests {
                     sum_value: Precision::Exact(ScalarValue::Null),
                     distinct_count: Precision::Exact(0),
                     null_count: Precision::Exact(0),
-                    sum_value: Precision::Exact(ScalarValue::Null),
                 },
             ]
         );
