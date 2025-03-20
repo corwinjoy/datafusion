@@ -42,7 +42,7 @@ use datafusion_physical_plan::DisplayFormatType;
 use itertools::Itertools;
 use log::debug;
 use object_store::ObjectStore;
-use parquet::encryption::decryption::FileDecryptionProperties;
+use parquet::encryption::decrypt::FileDecryptionProperties;
 
 /// Execution plan for reading one or more Parquet files.
 ///

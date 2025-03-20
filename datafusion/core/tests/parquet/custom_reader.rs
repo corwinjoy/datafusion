@@ -43,7 +43,7 @@ use object_store::path::Path;
 use object_store::{ObjectMeta, ObjectStore};
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet::arrow::ArrowWriter;
-use parquet::encryption::decryption::FileDecryptionProperties;
+use parquet::encryption::decrypt::FileDecryptionProperties;
 use parquet::errors::ParquetError;
 use parquet::file::metadata::ParquetMetaData;
 
@@ -231,7 +231,6 @@ impl AsyncFileReader for ParquetFileReader {
 
     fn get_metadata(
         &mut self,
-        fd: Option<&FileDecryptionProperties>
     ) -> BoxFuture<'_, parquet::errors::Result<Arc<ParquetMetaData>>> {
         Box::pin(async move {
             let metadata = fetch_parquet_metadata(

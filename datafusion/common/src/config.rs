@@ -30,9 +30,9 @@ use crate::{DataFusionError, Result};
 use serde::{Deserialize, Serialize};
 use hex;
 #[cfg(feature = "parquet")]
-use parquet::encryption::encrypt::{EncryptionKey, FileEncryptionProperties};
+use parquet::encryption::encrypt::FileEncryptionProperties;
 #[cfg(feature = "parquet")]
-use parquet::encryption::decryption::FileDecryptionProperties;
+use parquet::encryption::decrypt::FileDecryptionProperties;
 
 #[derive(Serialize, Deserialize)]
 pub struct EncryptionColumnKeys {
@@ -236,25 +236,23 @@ config_namespace! {
 impl Into<FileDecryptionProperties> for ConfigFileDecryptionProperties {
     fn into(self) -> FileDecryptionProperties {
         let eck = EncryptionColumnKeys::from_json_to_column_keys(&self.column_keys_as_json_hex);
-        let mut column_keys: Option<HashMap<Vec<u8>, Vec<u8>>> = None;
+        let mut column_names: Vec<&str> = Vec::new();
+        let mut column_keys: Vec<Vec<u8>> = Vec::new();
         if !eck.is_empty() {
-            let mut ck: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
             for (key, val) in eck.iter() {
-                ck.insert(key.clone().into_bytes(), val.clone());
+                column_names.push(key.as_str());
+                column_keys.push(val.clone());
             }
-            column_keys = Some(ck);
         }
-        let mut aad_prefix: Option<Vec<u8>> = None;
+        let mut fep = FileDecryptionProperties::builder(hex::decode(self.footer_key_as_hex).unwrap())
+            .with_column_keys(column_names, column_keys);
+
         if self.aad_prefix_as_hex.len() > 0 {
-            aad_prefix = Some(hex::decode(&self.aad_prefix_as_hex).expect("Invalid AAD prefix"));
+            let aad_prefix = hex::decode(&self.aad_prefix_as_hex).expect("Invalid AAD prefix");
+            fep = fep.with_aad_prefix(aad_prefix);
         }
 
-        let fep = FileDecryptionProperties{
-            footer_key: hex::decode(self.footer_key_as_hex).unwrap(),
-            column_keys,
-            aad_prefix,
-        };
-        fep
+        fep.build().unwrap()
     }
 }
 
@@ -262,15 +260,21 @@ impl Into<FileDecryptionProperties> for ConfigFileDecryptionProperties {
 impl From<FileDecryptionProperties> for ConfigFileDecryptionProperties {
     fn from(f: FileDecryptionProperties) -> Self {
         let mut column_keys: HashMap<String, Vec<u8>> = HashMap::new();
-        if f.column_keys.is_some() {
-            column_keys = f.column_keys.unwrap().into_iter().map(|(k, v)| (String::from_utf8(k).unwrap(), v.clone())).collect();
+        let (column_names_vec, column_keys_vec) = f.column_keys();
+        if column_names_vec.len() > 0 {
+            let mut iter = std::iter::zip(column_names_vec, column_keys_vec);
+            column_keys = HashMap::from_iter(&mut iter);
         }
 
         let ck = EncryptionColumnKeys::new(&column_keys);
+        let mut aad_prefix: Vec<u8> = Vec::new();
+        if let Some(prefix) = f.aad_prefix() {
+            aad_prefix = prefix.clone();
+        }
         ConfigFileDecryptionProperties {
-            footer_key_as_hex: hex::encode(f.footer_key),
+            footer_key_as_hex: hex::encode(f.footer_key()),
             column_keys_as_json_hex: ck.to_json(),
-            aad_prefix_as_hex: hex::encode(f.aad_prefix.unwrap_or_default()),
+            aad_prefix_as_hex: hex::encode(aad_prefix),
         }
     }
 }
@@ -288,38 +292,46 @@ config_namespace! {
 impl Into<FileEncryptionProperties> for ConfigFileEncryptionProperties {
     fn into(self) -> FileEncryptionProperties {
         let eck = EncryptionColumnKeys::from_json_to_column_keys(&self.column_keys_as_json_hex);
-        let mut column_keys: HashMap<String, EncryptionKey> = HashMap::new();
+        let mut column_names: Vec<&str> = Vec::new();
+        let mut column_keys: Vec<Vec<u8>> = Vec::new();
         if !eck.is_empty() {
             for (key, val) in eck.iter() {
-                column_keys.insert(key.clone(), EncryptionKey::new(val.clone()));
+                column_names.push(&key[..]);
+                column_keys.push(val.clone());
             }
         }
-        let mut aad_prefix: Option<Vec<u8>> = None;
+
+        let mut fep = FileEncryptionProperties::builder(hex::decode(self.footer_key_as_hex).unwrap())
+            .with_column_keys(column_names, column_keys)
+            .with_encrypt_footer(self.encrypt_footer);
+
         if self.aad_prefix_as_hex.len() > 0 {
-            aad_prefix = Some(hex::decode(&self.aad_prefix_as_hex).expect("Invalid AAD prefix"));
+            let aad_prefix: Vec<u8> = hex::decode(&self.aad_prefix_as_hex).expect("Invalid AAD prefix");
+            fep = fep.with_aad_prefix(aad_prefix);
         }
-        let fep = FileEncryptionProperties{
-            encrypt_footer: self.encrypt_footer,
-            footer_key: EncryptionKey::new(hex::decode(self.footer_key_as_hex).unwrap()),
-            column_keys: column_keys,
-            aad_prefix,
-            store_aad_prefix: true,
-        };
-        fep
+        fep.build().unwrap()
     }
 }
 
 #[cfg(feature = "parquet")]
 impl From<FileEncryptionProperties> for ConfigFileEncryptionProperties {
     fn from(f: FileEncryptionProperties) -> Self {
-        let column_keys: HashMap<String, Vec<u8>> =
-            f.column_keys.into_iter().map(|(k, v)| (k, v.key().clone())).collect();
+        let mut column_keys: HashMap<String, Vec<u8>> = HashMap::new();
+        let (column_names_vec, column_keys_vec, column_metas_vec) = f.column_keys();
+        if column_names_vec.len() > 0 {
+            let mut iter = std::iter::zip(column_names_vec, column_keys_vec);
+            column_keys = HashMap::from_iter(&mut iter);
+        }
         let ck = EncryptionColumnKeys::new(&column_keys);
+        let mut aad_prefix: Vec<u8> = Vec::new();
+        if let Some(prefix) = f.aad_prefix() {
+            aad_prefix = prefix.clone();
+        }
         ConfigFileEncryptionProperties {
-            encrypt_footer: f.encrypt_footer,
-            footer_key_as_hex: hex::encode(f.footer_key.key()),
+            encrypt_footer: f.encrypt_footer(),
+            footer_key_as_hex: hex::encode(f.footer_key()),
             column_keys_as_json_hex: ck.to_json(),
-            aad_prefix_as_hex: hex::encode(f.aad_prefix.unwrap_or_default()),
+            aad_prefix_as_hex: hex::encode(aad_prefix),
         }
     }
 }

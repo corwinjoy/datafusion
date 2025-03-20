@@ -40,8 +40,8 @@ use parquet::{
     },
     schema::types::ColumnPath,
 };
-use parquet::data_type::AsBytes;
-use parquet::encryption::encrypt::{EncryptionPropertiesBuilder, FileEncryptionProperties};
+
+use parquet::encryption::encrypt::FileEncryptionProperties;
 
 /// Options for writing parquet files
 #[derive(Clone, Debug)]
@@ -267,7 +267,7 @@ impl ParquetOptions {
         let fep: Option<FileEncryptionProperties> =
             match file_encryption_properties {
                 Some(fe) =>
-                    Some(EncryptionPropertiesBuilder::new(fe.encrypt_footer.as_bytes().to_vec()).build()),
+                    Some(fe.clone().into()),
                 None => None,
         };
 
@@ -290,7 +290,7 @@ impl ParquetOptions {
             .set_bloom_filter_enabled(*bloom_filter_on_write);
 
         if fep.is_some() {
-            builder = builder.set_file_encryption_properties(&fep.unwrap());
+            builder = builder.with_file_encryption_properties(fep.unwrap());
         }
 
 

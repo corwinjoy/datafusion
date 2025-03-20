@@ -44,7 +44,7 @@ use log::debug;
 use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions};
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet::arrow::{ParquetRecordBatchStreamBuilder, ProjectionMask};
-use parquet::encryption::decryption::FileDecryptionProperties;
+use parquet::encryption::decrypt::FileDecryptionProperties;
 
 /// Implements [`FileOpener`] for a parquet file
 pub(super) struct ParquetOpener {
