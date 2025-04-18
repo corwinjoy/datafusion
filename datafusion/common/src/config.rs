@@ -245,7 +245,7 @@ impl Into<FileDecryptionProperties> for ConfigFileDecryptionProperties {
             }
         }
         let mut fep = FileDecryptionProperties::builder(hex::decode(self.footer_key_as_hex).unwrap())
-            .with_column_keys(column_names, column_keys);
+            .with_column_keys(column_names, column_keys).unwrap();
 
         if self.aad_prefix_as_hex.len() > 0 {
             let aad_prefix = hex::decode(&self.aad_prefix_as_hex).expect("Invalid AAD prefix");
@@ -302,7 +302,7 @@ impl Into<FileEncryptionProperties> for ConfigFileEncryptionProperties {
         }
 
         let mut fep = FileEncryptionProperties::builder(hex::decode(self.footer_key_as_hex).unwrap())
-            .with_column_keys(column_names, column_keys)
+            .with_column_keys(column_names, column_keys).expect("Invalid column keys")
             .with_plaintext_footer(!self.encrypt_footer);
 
         if self.aad_prefix_as_hex.len() > 0 {

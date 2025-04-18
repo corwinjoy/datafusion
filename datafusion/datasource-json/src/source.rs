@@ -340,7 +340,7 @@ impl FileOpener for JsonOpener {
 
             let range = match calculated_range {
                 RangeCalculation::Range(None) => None,
-                RangeCalculation::Range(Some(range)) => Some(range.into()),
+                RangeCalculation::Range(Some(range)) => Some((range.start as u64 .. range.end as u64).into()),
                 RangeCalculation::TerminateEarly => {
                     return Ok(
                         futures::stream::poll_fn(move |_| Poll::Ready(None)).boxed()

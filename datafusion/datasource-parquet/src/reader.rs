@@ -97,36 +97,31 @@ pub(crate) struct ParquetFileReader {
 impl AsyncFileReader for ParquetFileReader {
     fn get_bytes(
         &mut self,
-        range: Range<usize>,
+        range: Range<u64>,
     ) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.file_metrics.bytes_scanned.add(range.end - range.start);
+        self.file_metrics.bytes_scanned.add(range.end as usize - range.start as usize);
         self.inner.get_bytes(range)
     }
 
     fn get_byte_ranges(
         &mut self,
-        ranges: Vec<Range<usize>>,
+        ranges: Vec<Range<u64>>,
     ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>>
     where
         Self: Send,
     {
-        let total = ranges.iter().map(|r| r.end - r.start).sum();
+        let total = ranges.iter().map(|r| r.end as usize - r.start as usize).sum();
         self.file_metrics.bytes_scanned.add(total);
         self.inner.get_byte_ranges(ranges)
     }
 
-    fn get_metadata(
-        &mut self
-    ) -> BoxFuture<'_, parquet::errors::Result<Arc<ParquetMetaData>>> {
-        self.inner.get_metadata()
+    fn get_metadata<'a>(
+        &'a mut self,
+        options: Option<&'a ArrowReaderOptions>,
+    ) -> BoxFuture<'a, parquet::errors::Result<Arc<ParquetMetaData>>> {
+        self.inner.get_metadata(options)
     }
 
-    fn get_metadata_with_options<'a>(
-        &'a mut self,
-        options: &'a ArrowReaderOptions,
-    ) -> BoxFuture<'a, parquet::errors::Result<Arc<ParquetMetaData>>> {
-        self.inner.get_metadata_with_options(options)
-    }
 }
 
 impl ParquetFileReaderFactory for DefaultParquetFileReaderFactory {
@@ -143,7 +138,7 @@ impl ParquetFileReaderFactory for DefaultParquetFileReaderFactory {
             metrics,
         );
         let store = Arc::clone(&self.store);
-        let mut inner = ParquetObjectReader::new(store, file_meta.object_meta);
+        let mut inner = ParquetObjectReader::new(store, file_meta.object_meta.location);
 
         if let Some(hint) = metadata_size_hint {
             inner = inner.with_footer_size_hint(hint)

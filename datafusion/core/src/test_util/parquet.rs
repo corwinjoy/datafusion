@@ -123,7 +123,7 @@ impl TestParquetFile {
         let object_meta = ObjectMeta {
             location: Path::parse(canonical_path.to_str().unwrap_or_default())?,
             last_modified: Default::default(),
-            size,
+            size: size as u64,
             e_tag: None,
             version: None,
         };

@@ -232,7 +232,7 @@ impl FileGroupPartitioner {
                     let mut range_start = 0;
                     while range_start < source_file.object_meta.size {
                         let range_end = min(
-                            range_start + (target_partition_size - state.1),
+                            range_start + (target_partition_size as u64- state.1 as u64),
                             source_file.object_meta.size,
                         );
 
@@ -243,11 +243,11 @@ impl FileGroupPartitioner {
                         });
                         produced_files.push((state.0, produced_file));
 
-                        if state.1 + (range_end - range_start) >= target_partition_size {
+                        if (state.1 + (range_end- range_start) as usize)  >= target_partition_size {
                             state.0 += 1;
                             state.1 = 0;
                         } else {
-                            state.1 += range_end - range_start;
+                            state.1 += (range_end - range_start) as usize;
                         }
                         range_start = range_end;
                     }
@@ -289,7 +289,7 @@ impl FileGroupPartitioner {
                 if group.len() == 1 {
                     Some(ToRepartition {
                         source_index: group_index,
-                        file_size: group[0].object_meta.size,
+                        file_size: group[0].object_meta.size as usize,
                         new_groups: vec![group_index],
                     })
                 } else {

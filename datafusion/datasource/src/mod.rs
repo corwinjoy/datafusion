@@ -116,7 +116,7 @@ impl PartitionedFile {
             object_meta: ObjectMeta {
                 location: Path::from(path.into()),
                 last_modified: chrono::Utc.timestamp_nanos(0),
-                size: size as usize,
+                size: size as u64,
                 e_tag: None,
                 version: None,
             },
@@ -134,7 +134,7 @@ impl PartitionedFile {
             object_meta: ObjectMeta {
                 location: Path::from(path),
                 last_modified: chrono::Utc.timestamp_nanos(0),
-                size: size as usize,
+                size: size as u64,
                 e_tag: None,
                 version: None,
             },
@@ -240,13 +240,13 @@ pub async fn calculate_range(
             let (start, end) = (start as usize, end as usize);
 
             let start_delta = if start != 0 {
-                find_first_newline(store, location, start - 1, file_size, newline).await?
+                find_first_newline(store, location, start - 1, file_size as usize, newline).await?
             } else {
                 0
             };
 
-            let end_delta = if end != file_size {
-                find_first_newline(store, location, end - 1, file_size, newline).await?
+            let end_delta = if end != file_size as usize {
+                find_first_newline(store, location, end - 1, file_size as usize, newline).await?
             } else {
                 0
             };
@@ -281,7 +281,7 @@ async fn find_first_newline(
     newline: u8,
 ) -> Result<usize> {
     let options = GetOptions {
-        range: Some(GetRange::Bounded(start..end)),
+        range: Some(GetRange::Bounded(start as u64..end as u64)),
         ..Default::default()
     };
 

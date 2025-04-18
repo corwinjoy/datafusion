@@ -152,7 +152,7 @@ hashbrown = { version = "0.14.5", features = ["raw"] }
 indexmap = "2.7.1"
 itertools = "0.14"
 log = "^0.4"
-object_store = { version = "0.11.0", default-features = false }
+object_store = { version = "0.12.0", default-features = false }
 parking_lot = "0.12"
 
 pbjson = { version = "0.7.0" }
