@@ -43,6 +43,7 @@ use object_store::path::Path;
 use object_store::{ObjectMeta, ObjectStore};
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet::arrow::ArrowWriter;
+use parquet::encryption::decrypt::FileDecryptionProperties;
 use parquet::errors::ParquetError;
 use parquet::file::metadata::ParquetMetaData;
 

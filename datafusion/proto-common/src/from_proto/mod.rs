@@ -985,6 +985,8 @@ impl TryFrom<&protobuf::ParquetOptions> for ParquetOptions {
             schema_force_view_types: value.schema_force_view_types,
             binary_as_string: value.binary_as_string,
             skip_arrow_metadata: value.skip_arrow_metadata,
+            file_decryption_properties: None,
+            file_encryption_properties: None,
         })
     }
 }

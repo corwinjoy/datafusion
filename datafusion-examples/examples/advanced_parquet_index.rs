@@ -60,6 +60,7 @@ use futures::FutureExt;
 use object_store::ObjectStore;
 use tempfile::TempDir;
 use url::Url;
+use datafusion::parquet::encryption::decrypt::FileDecryptionProperties;
 
 /// This example demonstrates using low level DataFusion APIs to read only
 /// certain row groups and ranges from parquet files, based on external

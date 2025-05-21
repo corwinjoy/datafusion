@@ -44,6 +44,7 @@ use log::debug;
 use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions};
 use parquet::arrow::async_reader::AsyncFileReader;
 use parquet::arrow::{ParquetRecordBatchStreamBuilder, ProjectionMask};
+use parquet::encryption::decrypt::FileDecryptionProperties;
 
 /// Implements [`FileOpener`] for a parquet file
 pub(super) struct ParquetOpener {
@@ -83,6 +84,8 @@ pub(super) struct ParquetOpener {
     pub enable_bloom_filter: bool,
     /// Schema adapter factory
     pub schema_adapter_factory: Arc<dyn SchemaAdapterFactory>,
+
+    pub file_decryption_properties:  Option<Arc<FileDecryptionProperties>>,
 }
 
 impl FileOpener for ParquetOpener {
@@ -122,11 +125,16 @@ impl FileOpener for ParquetOpener {
         );
         let enable_bloom_filter = self.enable_bloom_filter;
         let limit = self.limit;
+        let file_decryption_properties = self.file_decryption_properties.clone();
 
         Ok(Box::pin(async move {
-            let options = ArrowReaderOptions::new().with_page_index(enable_page_index);
+            let mut options = ArrowReaderOptions::new().with_page_index(enable_page_index);
+            if let Some(ref fd_val) = file_decryption_properties {
+                options = options.with_file_decryption_properties((**fd_val).clone());
+            }
 
             let mut metadata_timer = file_metrics.metadata_load_time.timer();
+            // The parquet open action happens here, first the metadata
             let metadata =
                 ArrowReaderMetadata::load_async(&mut reader, options.clone()).await?;
             let mut schema = Arc::clone(metadata.schema());
@@ -143,14 +151,19 @@ impl FileOpener for ParquetOpener {
                 schema = Arc::new(merged);
             }
 
-            let options = ArrowReaderOptions::new()
+            let mut options = ArrowReaderOptions::new()
                 .with_page_index(enable_page_index)
                 .with_schema(Arc::clone(&schema));
+            if let Some(ref fd_val) = file_decryption_properties {
+                options = options.with_file_decryption_properties((**fd_val).clone());
+            }
             let metadata =
                 ArrowReaderMetadata::try_new(Arc::clone(metadata.metadata()), options)?;
 
             metadata_timer.stop();
 
+            // Then the reader is linked here.
+            // Rok, I also need your help linking here.
             let mut builder =
                 ParquetRecordBatchStreamBuilder::new_with_metadata(reader, metadata);
 
