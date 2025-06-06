@@ -990,6 +990,7 @@ impl TryFrom<&protobuf::ParquetOptions> for ParquetOptions {
             skip_arrow_metadata: value.skip_arrow_metadata,
             file_decryption_properties: None,
             file_encryption_properties: None,
+            encryption_factory_id: None,
         })
     }
 }
