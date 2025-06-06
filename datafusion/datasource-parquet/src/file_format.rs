@@ -320,6 +320,30 @@ async fn fetch_schema_with_location(
     Ok((loc_path, schema))
 }
 
+fn get_file_decryption_properties(
+    state: &dyn Session,
+    options: &TableParquetOptions,
+) -> Result<Option<FileDecryptionProperties>> {
+    let config_file_decryption_properties = &options.crypto.file_decryption;
+    let file_decryption_properties: Option<FileDecryptionProperties> =
+        match config_file_decryption_properties {
+            Some(cfd) => {
+                let fd: FileDecryptionProperties = cfd.clone().into();
+                Some(fd)
+            }
+            None => match &options.crypto.encryption_factory_id {
+                Some(factory_id) => {
+                    let factory = state
+                        .runtime_env()
+                        .parquet_encryption_factory(&factory_id)?;
+                    Some(factory.get_file_decryption_properties(options, "")?)
+                }
+                None => None,
+            },
+        };
+    Ok(file_decryption_properties)
+}
+
 #[async_trait]
 impl FileFormat for ParquetFormat {
     fn as_any(&self) -> &dyn Any {
@@ -351,15 +375,8 @@ impl FileFormat for ParquetFormat {
             Some(time_unit) => Some(parse_coerce_int96_string(time_unit.as_str())?),
             None => None,
         };
-        let config_file_decryption_properties = &self.options.crypto.file_decryption;
-        let file_decryption_properties: Option<FileDecryptionProperties> =
-            match config_file_decryption_properties {
-                Some(cfd) => {
-                    let fd: FileDecryptionProperties = cfd.clone().into();
-                    Some(fd)
-                }
-                None => None,
-            };
+        let file_decryption_properties =
+            get_file_decryption_properties(state, &self.options)?;
         let mut schemas: Vec<_> = futures::stream::iter(objects)
             .map(|object| {
                 fetch_schema_with_location(
@@ -411,20 +428,13 @@ impl FileFormat for ParquetFormat {
 
     async fn infer_stats(
         &self,
-        _state: &dyn Session,
+        state: &dyn Session,
         store: &Arc<dyn ObjectStore>,
         table_schema: SchemaRef,
         object: &ObjectMeta,
     ) -> Result<Statistics> {
-        let config_file_decryption_properties = &self.options.crypto.file_decryption;
-        let file_decryption_properties: Option<FileDecryptionProperties> =
-            match config_file_decryption_properties {
-                Some(cfd) => {
-                    let fd: FileDecryptionProperties = cfd.clone().into();
-                    Some(fd)
-                }
-                None => None,
-            };
+        let file_decryption_properties =
+            get_file_decryption_properties(state, &self.options)?;
         let stats = fetch_statistics(
             store.as_ref(),
             table_schema,
@@ -438,7 +448,7 @@ impl FileFormat for ParquetFormat {
 
     async fn create_physical_plan(
         &self,
-        _state: &dyn Session,
+        state: &dyn Session,
         conf: FileScanConfig,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let mut metadata_size_hint = None;
@@ -452,6 +462,15 @@ impl FileFormat for ParquetFormat {
         if let Some(metadata_size_hint) = metadata_size_hint {
             source = source.with_metadata_size_hint(metadata_size_hint)
         }
+
+        if let Some(encryption_factory_id) = &self.options.crypto.encryption_factory_id {
+            source = source.with_encryption_factory(
+                state
+                    .runtime_env()
+                    .parquet_encryption_factory(&encryption_factory_id)?,
+            );
+        }
+
         // Apply schema adapter factory before building the new config
         let file_source = source.apply_schema_adapter(&conf)?;
 
@@ -1252,7 +1271,7 @@ impl ParquetSink {
 
         let mut builder = WriterPropertiesBuilder::try_from(&parquet_opts)?;
         if let Some(encryption_factory_id) =
-            self.parquet_options.global.encryption_factory_id.as_ref()
+            self.parquet_options.crypto.encryption_factory_id.as_ref()
         {
             let encryption_factory =
                 runtime.parquet_encryption_factory(encryption_factory_id)?;
@@ -1320,7 +1339,9 @@ impl FileSink for ParquetSink {
         let mut allow_single_file_parallelism =
             parquet_opts.global.allow_single_file_parallelism;
 
-        if parquet_opts.crypto.file_encryption.is_some() {
+        if parquet_opts.crypto.file_encryption.is_some()
+            || parquet_opts.crypto.encryption_factory_id.is_some()
+        {
             // For now, arrow-rs does not support parallel writes with encryption
             // See https://github.com/apache/arrow-rs/issues/7359
             allow_single_file_parallelism = false;
