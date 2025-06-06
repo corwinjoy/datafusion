@@ -36,6 +36,8 @@ use datafusion_physical_expr_common::physical_expr::PhysicalExpr;
 use datafusion_physical_optimizer::pruning::PruningPredicate;
 use datafusion_physical_plan::metrics::{Count, ExecutionPlanMetricsSet, MetricBuilder};
 
+use datafusion_common::config::TableParquetOptions;
+use datafusion_execution::parquet::EncryptionFactory;
 use futures::{StreamExt, TryStreamExt};
 use log::debug;
 use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions};
@@ -85,6 +87,7 @@ pub(super) struct ParquetOpener {
     pub coerce_int96: Option<TimeUnit>,
     /// Optional parquet FileDecryptionProperties
     pub file_decryption_properties: Option<Arc<FileDecryptionProperties>>,
+    pub encryption_factory: Option<Arc<dyn EncryptionFactory>>,
 }
 
 impl FileOpener for ParquetOpener {
@@ -126,7 +129,18 @@ impl FileOpener for ParquetOpener {
             .global_counter("num_predicate_creation_errors");
 
         let mut enable_page_index = self.enable_page_index;
-        let file_decryption_properties = self.file_decryption_properties.clone();
+        let mut file_decryption_properties = self.file_decryption_properties.clone();
+
+        // Creating props is delayed until here so that the file url/path is available,
+        // and we can handle errors.
+        if let Some(encryption_factory) = &self.encryption_factory {
+            if file_decryption_properties.is_none() {
+                let opts = TableParquetOptions::default(); // TODO: Need to pass these through, or extract out part of the config?
+                file_decryption_properties = Some(Arc::new(
+                    encryption_factory.get_file_decryption_properties(&opts, "")?,
+                ));
+            }
+        }
 
         // For now, page index does not work with encrypted files. See:
         // https://github.com/apache/arrow-rs/issues/7629
