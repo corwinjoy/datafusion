@@ -85,7 +85,7 @@ async fn write_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
     // Our encryption factory requires specifying the master key identifier to
     // use for encryption. To support arbitrary configuration options for different encryption factories,
     // DataFusion could use a HashMap<String, String> field for encryption options.
-    //let encryption_config = EncryptionConfig::new("kf1".to_owned());
+    //let encryption_config = EncryptionConfig::new("kf".to_owned());
     //parquet_options.encryption.factory_options = encryption_config.to_config_map();
 
     df.write_parquet(
@@ -177,7 +177,7 @@ impl EncryptionFactory for KmsEncryptionFactory {
     fn get_file_encryption_properties(
         &self,
         _options: &TableParquetOptions,
-        _schema: SchemaRef,
+        _schema: &SchemaRef,
         _file_path: &str,
     ) -> Result<FileEncryptionProperties> {
         //let config: &HashMap<String, String> = options.encryption.factory_options;
@@ -186,7 +186,7 @@ impl EncryptionFactory for KmsEncryptionFactory {
         //        "Footer key id for encryption is not set".to_owned(),
         //    )
         //})?;
-        let footer_key_id = "kf1".to_owned();
+        let footer_key_id = "kf".to_owned();
         // We could configure per-column keys using the provided schema,
         // but for simplicity this example uses uniform encryption.
         let config = EncryptionConfiguration::builder(footer_key_id).build()?;

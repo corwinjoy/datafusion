@@ -64,6 +64,7 @@ use crate::source::{parse_coerce_int96_string, ParquetSource};
 use async_trait::async_trait;
 use bytes::Bytes;
 use datafusion_datasource::source::DataSourceExec;
+use datafusion_execution::runtime_env::RuntimeEnv;
 use futures::future::BoxFuture;
 use futures::{FutureExt, StreamExt, TryStreamExt};
 use log::debug;
@@ -1232,7 +1233,7 @@ impl ParquetSink {
 
     /// Create writer properties based upon configuration settings,
     /// including partitioning and the inclusion of arrow schema metadata.
-    fn create_writer_props(&self) -> Result<WriterProperties> {
+    fn create_writer_props(&self, runtime: &Arc<RuntimeEnv>) -> Result<WriterProperties> {
         let schema = if self.parquet_options.global.allow_single_file_parallelism {
             // If parallelizing writes, we may be also be doing hive style partitioning
             // into multiple files which impacts the schema per file.
@@ -1249,7 +1250,21 @@ impl ParquetSink {
             parquet_opts.arrow_schema(schema);
         }
 
-        Ok(WriterPropertiesBuilder::try_from(&parquet_opts)?.build())
+        let mut builder = WriterPropertiesBuilder::try_from(&parquet_opts)?;
+        if let Some(encryption_factory_id) =
+            self.parquet_options.global.encryption_factory_id.as_ref()
+        {
+            let encryption_factory =
+                runtime.parquet_encryption_factory(encryption_factory_id)?;
+            let file_encryption_properties = encryption_factory
+                .get_file_encryption_properties(
+                    &parquet_opts,
+                    schema,
+                    "", // TODO
+                )?;
+            builder = builder.with_file_encryption_properties(file_encryption_properties);
+        }
+        Ok(builder.build())
     }
 
     /// Creates an AsyncArrowWriter which serializes a parquet file to an ObjectStore
@@ -1315,7 +1330,8 @@ impl FileSink for ParquetSink {
             std::result::Result<(Path, FileMetaData), DataFusionError>,
         > = JoinSet::new();
 
-        let parquet_props = self.create_writer_props()?;
+        let runtime = context.runtime_env();
+        let parquet_props = self.create_writer_props(&runtime)?;
         let parallel_options = ParallelParquetWriterOptions {
             max_parallel_row_groups: parquet_opts
                 .global

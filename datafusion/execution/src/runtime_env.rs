@@ -173,10 +173,9 @@ impl RuntimeEnv {
     #[cfg(feature = "parquet")]
     pub fn parquet_encryption_factory(
         &self,
-        id: impl AsRef<String>,
+        id: &str,
     ) -> Result<Arc<dyn EncryptionFactory>> {
-        self.parquet_encryption_factory_registry
-            .get_factory(id.as_ref())
+        self.parquet_encryption_factory_registry.get_factory(id)
     }
 }
 
