@@ -29,6 +29,9 @@ use crate::{
 };
 
 use crate::cache::cache_manager::{CacheManager, CacheManagerConfig};
+#[cfg(feature = "parquet")]
+use crate::parquet::EncryptionFactory;
+use crate::parquet::EncryptionFactoryRegistry;
 use datafusion_common::{config::ConfigEntry, Result};
 use object_store::ObjectStore;
 use std::path::PathBuf;
@@ -78,6 +81,8 @@ pub struct RuntimeEnv {
     pub cache_manager: Arc<CacheManager>,
     /// Object Store Registry
     pub object_store_registry: Arc<dyn ObjectStoreRegistry>,
+    /// Parquet encryption factory registry
+    pub parquet_encryption_factory_registry: Arc<EncryptionFactoryRegistry>,
 }
 
 impl Debug for RuntimeEnv {
@@ -154,6 +159,25 @@ impl RuntimeEnv {
     pub fn object_store(&self, url: impl AsRef<Url>) -> Result<Arc<dyn ObjectStore>> {
         self.object_store_registry.get_store(url.as_ref())
     }
+
+    #[cfg(feature = "parquet")]
+    pub fn register_parquet_encryption_factory(
+        &self,
+        id: &str,
+        encryption_factory: Arc<dyn EncryptionFactory>,
+    ) -> Option<Arc<dyn EncryptionFactory>> {
+        self.parquet_encryption_factory_registry
+            .register_factory(id, encryption_factory)
+    }
+
+    #[cfg(feature = "parquet")]
+    pub fn parquet_encryption_factory(
+        &self,
+        id: impl AsRef<String>,
+    ) -> Result<Arc<dyn EncryptionFactory>> {
+        self.parquet_encryption_factory_registry
+            .get_factory(id.as_ref())
+    }
 }
 
 impl Default for RuntimeEnv {
@@ -185,6 +209,8 @@ pub struct RuntimeEnvBuilder {
     pub cache_manager: CacheManagerConfig,
     /// ObjectStoreRegistry to get object store based on url
     pub object_store_registry: Arc<dyn ObjectStoreRegistry>,
+    /// Parquet encryption factory registry
+    pub parquet_encryption_factory_registry: Arc<EncryptionFactoryRegistry>,
 }
 
 impl Default for RuntimeEnvBuilder {
@@ -202,6 +228,7 @@ impl RuntimeEnvBuilder {
             memory_pool: Default::default(),
             cache_manager: Default::default(),
             object_store_registry: Arc::new(DefaultObjectStoreRegistry::default()),
+            parquet_encryption_factory_registry: Default::default(),
         }
     }
 
@@ -270,6 +297,7 @@ impl RuntimeEnvBuilder {
             memory_pool,
             cache_manager,
             object_store_registry,
+            parquet_encryption_factory_registry,
         } = self;
         let memory_pool =
             memory_pool.unwrap_or_else(|| Arc::new(UnboundedMemoryPool::default()));
@@ -284,6 +312,7 @@ impl RuntimeEnvBuilder {
             },
             cache_manager: CacheManager::try_new(&cache_manager)?,
             object_store_registry,
+            parquet_encryption_factory_registry,
         })
     }
 
@@ -310,6 +339,9 @@ impl RuntimeEnvBuilder {
             memory_pool: Some(Arc::clone(&runtime_env.memory_pool)),
             cache_manager: cache_config,
             object_store_registry: Arc::clone(&runtime_env.object_store_registry),
+            parquet_encryption_factory_registry: Arc::clone(
+                &runtime_env.parquet_encryption_factory_registry,
+            ),
         }
     }
 

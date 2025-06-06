@@ -643,6 +643,7 @@ mod tests {
             crypto: ParquetEncryptionOptions {
                 file_encryption: fep,
                 file_decryption: None,
+                encryption_factory_id: None,
             },
         }
     }

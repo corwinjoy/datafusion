@@ -608,6 +608,8 @@ config_namespace! {
 
         /// Optional file encryption properties
         pub file_encryption: Option<ConfigFileEncryptionProperties>, default = None
+
+        pub encryption_factory_id: Option<String>, default = None
     }
 }
 

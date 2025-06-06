@@ -16,12 +16,13 @@
 // under the License.
 
 use arrow::array::{ArrayRef, Int32Array, RecordBatch, StringArray};
+use arrow_schema::SchemaRef;
 use datafusion::config::TableParquetOptions;
 use datafusion::dataframe::DataFrameWriteOptions;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
 use datafusion::datasource::listing::ListingOptions;
-use datafusion::datasource::physical_plan::FileSinkConfig;
-use datafusion::error::{DataFusionError, Result};
+use datafusion::error::Result;
+use datafusion::execution::parquet::EncryptionFactory;
 use datafusion::physical_plan::execute_stream;
 use datafusion::prelude::SessionContext;
 use futures::StreamExt;
@@ -33,6 +34,7 @@ use parquet_key_management::crypto_factory::{
 use parquet_key_management::kms::KmsConnectionConfig;
 use parquet_key_management::test_kms::TestKmsClientFactory;
 use std::collections::HashMap;
+use std::fmt::Formatter;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -79,12 +81,12 @@ async fn write_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
     let mut parquet_options = TableParquetOptions::new();
     // We specify that we want to use Parquet encryption by setting the identifier of the
     // encryption factory to use.
-    parquet_options.encryption.factory_id = ENCRYPTION_FACTORY_ID.to_owned();
+    parquet_options.crypto.encryption_factory_id = Some(ENCRYPTION_FACTORY_ID.to_owned());
     // Our encryption factory requires specifying the master key identifier to
     // use for encryption. To support arbitrary configuration options for different encryption factories,
     // DataFusion could use a HashMap<String, String> field for encryption options.
-    let encryption_config = EncryptionConfig::new("kf1".to_owned());
-    parquet_options.encryption.factory_options = encryption_config.to_config_map();
+    //let encryption_config = EncryptionConfig::new("kf1".to_owned());
+    //parquet_options.encryption.factory_options = encryption_config.to_config_map();
 
     df.write_parquet(
         tmpdir.path().to_str().unwrap(),
@@ -104,7 +106,7 @@ async fn read_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
     // Specify the encryption factory to use for decrypting Parquet.
     // In this example, we don't require any additional configuration options when reading
     // as key identifiers are stored in the key metadata.
-    parquet_options.encryption.factory_id = ENCRYPTION_FACTORY_ID.to_owned();
+    parquet_options.crypto.encryption_factory_id = Some(ENCRYPTION_FACTORY_ID.to_owned());
 
     let file_format = ParquetFormat::default().with_options(parquet_options);
     let listing_options = ListingOptions::new(Arc::new(file_format));
@@ -157,6 +159,12 @@ struct KmsEncryptionFactory {
     crypto_factory: CryptoFactory,
 }
 
+impl std::fmt::Debug for KmsEncryptionFactory {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KmsEncryptionFactory").finish()
+    }
+}
+
 /// `EncryptionFactory` is a trait defined by DataFusion that allows generating
 /// file encryption and decryption properties.
 impl EncryptionFactory for KmsEncryptionFactory {
@@ -168,16 +176,17 @@ impl EncryptionFactory for KmsEncryptionFactory {
     /// stored in a JSON file alongside Parquet files).
     fn get_file_encryption_properties(
         &self,
-        options: &TableParquetOptions,
-        sink_config: &FileSinkConfig,
-        file_path: &str,
+        _options: &TableParquetOptions,
+        _schema: SchemaRef,
+        _file_path: &str,
     ) -> Result<FileEncryptionProperties> {
-        let config: &HashMap<String, String> = options.encryption.factory_options;
-        let footer_key_id = config.get("footer_key_id").cloned().ok_or_else(|| {
-            DataFusionError::Configuration(
-                "Footer key id for encryption is not set".to_owned(),
-            )
-        })?;
+        //let config: &HashMap<String, String> = options.encryption.factory_options;
+        //let footer_key_id = config.get("footer_key_id").cloned().ok_or_else(|| {
+        //    DataFusionError::Configuration(
+        //        "Footer key id for encryption is not set".to_owned(),
+        //    )
+        //})?;
+        let footer_key_id = "kf1".to_owned();
         // We could configure per-column keys using the provided schema,
         // but for simplicity this example uses uniform encryption.
         let config = EncryptionConfiguration::builder(footer_key_id).build()?;
@@ -193,10 +202,10 @@ impl EncryptionFactory for KmsEncryptionFactory {
     /// The `file_path` needs to be known to support encryption factories that use external key material.
     fn get_file_decryption_properties(
         &self,
-        options: &TableParquetOptions,
-        file_path: &str,
+        _options: &TableParquetOptions,
+        _file_path: &str,
     ) -> Result<FileDecryptionProperties> {
-        let config = DecryptionConfiguration::builder().build()?;
+        let config = DecryptionConfiguration::builder().build();
         let kms_config = Arc::new(KmsConnectionConfig::default());
         Ok(self
             .crypto_factory
