@@ -18,7 +18,7 @@ pub trait EncryptionFactory: Send + Sync + std::fmt::Debug + 'static {
     fn get_file_encryption_properties(
         &self,
         options: &TableParquetOptions,
-        schema: SchemaRef,
+        schema: &SchemaRef,
         file_path: &str,
     ) -> datafusion_common::Result<FileEncryptionProperties>;
 
