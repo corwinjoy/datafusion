@@ -515,6 +515,7 @@ impl From<&ParquetOptionsProto> for ParquetOptions {
             }),
             file_decryption_properties: None,
             file_encryption_properties: None,
+            encryption_factory_id: None,
         }
     }
 }

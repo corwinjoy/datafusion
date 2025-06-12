@@ -231,6 +231,7 @@ impl ParquetOptions {
             file_encryption_properties,
 
             // not in WriterProperties
+            encryption_factory_id: _,
             enable_page_index: _,
             pruning: _,
             skip_metadata: _,
@@ -515,6 +516,7 @@ mod tests {
             bloom_filter_ndv: Some(42),
             file_decryption_properties: None,
             file_encryption_properties: None,
+            encryption_factory_id: None,
 
             // not in WriterProperties, but itemizing here to not skip newly added props
             enable_page_index: defaults.enable_page_index,
@@ -626,6 +628,7 @@ mod tests {
                 bloom_filter_ndv: default_col_props.bloom_filter_ndv,
                 file_encryption_properties: fep,
                 file_decryption_properties: None,
+                encryption_factory_id: None,
 
                 // not in WriterProperties
                 enable_page_index: global_options_defaults.enable_page_index,

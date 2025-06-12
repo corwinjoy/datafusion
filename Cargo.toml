@@ -151,7 +151,7 @@ itertools = "0.14"
 log = "^0.4"
 object_store = { version = "0.12.0", default-features = false }
 parking_lot = "0.12"
-parquet = { version = "55.1.0", default-features = false, features = [
+parquet = { version = "=55.0.0", default-features = false, features = [
     "arrow",
     "async",
     "object_store",
