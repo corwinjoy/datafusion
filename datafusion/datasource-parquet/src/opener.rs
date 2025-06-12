@@ -137,10 +137,9 @@ impl FileOpener for ParquetOpener {
         if let Some(encryption_factory) = &self.encryption_factory {
             if file_decryption_properties.is_none() {
                 let opts = TableParquetOptions::default(); // TODO: Need to pass these through, or extract out part of the config?
-                file_decryption_properties = Some(Arc::new(
-                    encryption_factory
-                        .get_file_decryption_properties(&opts, &file_location)?,
-                ));
+                file_decryption_properties = encryption_factory
+                    .get_file_decryption_properties(&opts, &file_location)?
+                    .map(|props| Arc::new(props));
             }
         }
 
