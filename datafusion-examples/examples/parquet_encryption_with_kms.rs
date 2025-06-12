@@ -26,6 +26,7 @@ use datafusion::execution::parquet::EncryptionFactory;
 use datafusion::physical_plan::execute_stream;
 use datafusion::prelude::SessionContext;
 use futures::StreamExt;
+use object_store::path::Path;
 use parquet::encryption::decrypt::FileDecryptionProperties;
 use parquet::encryption::encrypt::FileEncryptionProperties;
 use parquet_key_management::crypto_factory::{
@@ -178,7 +179,7 @@ impl EncryptionFactory for KmsEncryptionFactory {
         &self,
         _options: &TableParquetOptions,
         _schema: &SchemaRef,
-        _file_path: &str,
+        _file_path: &Path,
     ) -> Result<FileEncryptionProperties> {
         //let config: &HashMap<String, String> = options.encryption.factory_options;
         //let footer_key_id = config.get("footer_key_id").cloned().ok_or_else(|| {
@@ -203,7 +204,7 @@ impl EncryptionFactory for KmsEncryptionFactory {
     fn get_file_decryption_properties(
         &self,
         _options: &TableParquetOptions,
-        _file_path: &str,
+        _file_path: &Path,
     ) -> Result<FileDecryptionProperties> {
         let config = DecryptionConfiguration::builder().build();
         let kms_config = Arc::new(KmsConnectionConfig::default());
