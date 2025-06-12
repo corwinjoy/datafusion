@@ -2,6 +2,7 @@ use arrow::datatypes::SchemaRef;
 use dashmap::DashMap;
 use datafusion_common::config::TableParquetOptions;
 use datafusion_common::DataFusionError;
+use object_store::path::Path;
 use parquet::encryption::decrypt::FileDecryptionProperties;
 use parquet::encryption::encrypt::FileEncryptionProperties;
 use std::sync::Arc;
@@ -16,14 +17,14 @@ pub trait EncryptionFactory: Send + Sync + std::fmt::Debug + 'static {
         &self,
         options: &TableParquetOptions,
         schema: &SchemaRef,
-        file_path: &str,
+        file_path: &Path,
     ) -> datafusion_common::Result<FileEncryptionProperties>;
 
     /// Generate file decryption properties to use when reading a Parquet file.
     fn get_file_decryption_properties(
         &self,
         options: &TableParquetOptions,
-        file_path: &str,
+        file_path: &Path,
     ) -> datafusion_common::Result<FileDecryptionProperties>;
 }
 

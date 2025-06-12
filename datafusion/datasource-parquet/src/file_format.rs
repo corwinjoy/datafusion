@@ -302,18 +302,21 @@ fn clear_metadata(
 }
 
 async fn fetch_schema_with_location(
+    state: &dyn Session,
     store: &dyn ObjectStore,
+    options: &TableParquetOptions,
     file: &ObjectMeta,
     metadata_size_hint: Option<usize>,
-    file_decryption_properties: Option<&FileDecryptionProperties>,
     coerce_int96: Option<TimeUnit>,
 ) -> Result<(Path, Schema)> {
+    let file_decryption_properties =
+        get_file_decryption_properties(state, options, &file.location)?;
     let loc_path = file.location.clone();
     let schema = fetch_schema(
         store,
         file,
         metadata_size_hint,
-        file_decryption_properties,
+        file_decryption_properties.as_ref(),
         coerce_int96,
     )
     .await?;
@@ -323,6 +326,7 @@ async fn fetch_schema_with_location(
 fn get_file_decryption_properties(
     state: &dyn Session,
     options: &TableParquetOptions,
+    file_path: &Path,
 ) -> Result<Option<FileDecryptionProperties>> {
     let config_file_decryption_properties = &options.global.file_decryption_properties;
     let file_decryption_properties: Option<FileDecryptionProperties> =
@@ -336,7 +340,7 @@ fn get_file_decryption_properties(
                     let factory = state
                         .runtime_env()
                         .parquet_encryption_factory(&factory_id)?;
-                    Some(factory.get_file_decryption_properties(options, "")?)
+                    Some(factory.get_file_decryption_properties(options, file_path)?)
                 }
                 None => None,
             },
@@ -376,15 +380,14 @@ impl FileFormat for ParquetFormat {
             None => None,
         };
         // TODO: Will need to create per object to handle different file paths
-        let file_decryption_properties =
-            get_file_decryption_properties(state, &self.options)?;
         let mut schemas: Vec<_> = futures::stream::iter(objects)
             .map(|object| {
                 fetch_schema_with_location(
+                    state,
                     store.as_ref(),
+                    &self.options,
                     object,
                     self.metadata_size_hint(),
-                    file_decryption_properties.as_ref(),
                     coerce_int96,
                 )
             })
@@ -435,7 +438,7 @@ impl FileFormat for ParquetFormat {
         object: &ObjectMeta,
     ) -> Result<Statistics> {
         let file_decryption_properties =
-            get_file_decryption_properties(state, &self.options)?;
+            get_file_decryption_properties(state, &self.options, &object.location)?;
         let stats = fetch_statistics(
             store.as_ref(),
             table_schema,
@@ -1253,7 +1256,11 @@ impl ParquetSink {
 
     /// Create writer properties based upon configuration settings,
     /// including partitioning and the inclusion of arrow schema metadata.
-    fn create_writer_props(&self, runtime: &Arc<RuntimeEnv>) -> Result<WriterProperties> {
+    fn create_writer_props(
+        &self,
+        runtime: &Arc<RuntimeEnv>,
+        path: &Path,
+    ) -> Result<WriterProperties> {
         let schema = if self.parquet_options.global.allow_single_file_parallelism {
             // If parallelizing writes, we may be also be doing hive style partitioning
             // into multiple files which impacts the schema per file.
@@ -1277,11 +1284,7 @@ impl ParquetSink {
             let encryption_factory =
                 runtime.parquet_encryption_factory(encryption_factory_id)?;
             let file_encryption_properties = encryption_factory
-                .get_file_encryption_properties(
-                    &parquet_opts,
-                    schema,
-                    "", // TODO
-                )?;
+                .get_file_encryption_properties(&parquet_opts, schema, path)?;
             builder = builder.with_file_encryption_properties(file_encryption_properties);
         }
         Ok(builder.build())
@@ -1353,7 +1356,6 @@ impl FileSink for ParquetSink {
         > = JoinSet::new();
 
         let runtime = context.runtime_env();
-        let parquet_props = self.create_writer_props(&runtime)?;
         let parallel_options = ParallelParquetWriterOptions {
             max_parallel_row_groups: parquet_opts
                 .global
@@ -1364,6 +1366,7 @@ impl FileSink for ParquetSink {
         };
 
         while let Some((path, mut rx)) = file_stream_rx.recv().await {
+            let parquet_props = self.create_writer_props(&runtime, &path)?;
             if !allow_single_file_parallelism {
                 let mut writer = self
                     .create_async_arrow_writer(

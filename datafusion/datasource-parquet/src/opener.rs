@@ -94,7 +94,8 @@ impl FileOpener for ParquetOpener {
     fn open(&self, file_meta: FileMeta) -> Result<FileOpenFuture> {
         let file_range = file_meta.range.clone();
         let extensions = file_meta.extensions.clone();
-        let file_name = file_meta.location().to_string();
+        let file_location = file_meta.location().clone();
+        let file_name = file_location.to_string();
         let file_metrics =
             ParquetFileMetrics::new(self.partition_index, &file_name, &self.metrics);
 
@@ -137,7 +138,8 @@ impl FileOpener for ParquetOpener {
             if file_decryption_properties.is_none() {
                 let opts = TableParquetOptions::default(); // TODO: Need to pass these through, or extract out part of the config?
                 file_decryption_properties = Some(Arc::new(
-                    encryption_factory.get_file_decryption_properties(&opts, "")?,
+                    encryption_factory
+                        .get_file_decryption_properties(&opts, &file_location)?,
                 ));
             }
         }
