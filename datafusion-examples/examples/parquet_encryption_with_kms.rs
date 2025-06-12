@@ -180,7 +180,7 @@ impl EncryptionFactory for KmsEncryptionFactory {
         _options: &TableParquetOptions,
         _schema: &SchemaRef,
         _file_path: &Path,
-    ) -> Result<FileEncryptionProperties> {
+    ) -> Result<Option<FileEncryptionProperties>> {
         //let config: &HashMap<String, String> = options.encryption.factory_options;
         //let footer_key_id = config.get("footer_key_id").cloned().ok_or_else(|| {
         //    DataFusionError::Configuration(
@@ -194,9 +194,10 @@ impl EncryptionFactory for KmsEncryptionFactory {
         // Similarly, the KMS connection could be configured from the options if needed, but this
         // example just uses the default options.
         let kms_config = Arc::new(KmsConnectionConfig::default());
-        Ok(self
-            .crypto_factory
-            .file_encryption_properties(kms_config, &config)?)
+        Ok(Some(
+            self.crypto_factory
+                .file_encryption_properties(kms_config, &config)?,
+        ))
     }
 
     /// Generate file decryption properties to use when reading a Parquet file.
@@ -205,11 +206,12 @@ impl EncryptionFactory for KmsEncryptionFactory {
         &self,
         _options: &TableParquetOptions,
         _file_path: &Path,
-    ) -> Result<FileDecryptionProperties> {
+    ) -> Result<Option<FileDecryptionProperties>> {
         let config = DecryptionConfiguration::builder().build();
         let kms_config = Arc::new(KmsConnectionConfig::default());
-        Ok(self
-            .crypto_factory
-            .file_decryption_properties(kms_config, config)?)
+        Ok(Some(
+            self.crypto_factory
+                .file_decryption_properties(kms_config, config)?,
+        ))
     }
 }

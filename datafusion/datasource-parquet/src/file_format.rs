@@ -340,7 +340,7 @@ fn get_file_decryption_properties(
                     let factory = state
                         .runtime_env()
                         .parquet_encryption_factory(&factory_id)?;
-                    Some(factory.get_file_decryption_properties(options, file_path)?)
+                    factory.get_file_decryption_properties(options, file_path)?
                 }
                 None => None,
             },
@@ -1284,7 +1284,10 @@ impl ParquetSink {
                 runtime.parquet_encryption_factory(encryption_factory_id)?;
             let file_encryption_properties = encryption_factory
                 .get_file_encryption_properties(&parquet_opts, schema, path)?;
-            builder = builder.with_file_encryption_properties(file_encryption_properties);
+            if let Some(file_encryption_properties) = file_encryption_properties {
+                builder =
+                    builder.with_file_encryption_properties(file_encryption_properties);
+            }
         }
         Ok(builder.build())
     }

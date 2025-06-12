@@ -18,14 +18,14 @@ pub trait EncryptionFactory: Send + Sync + std::fmt::Debug + 'static {
         options: &TableParquetOptions,
         schema: &SchemaRef,
         file_path: &Path,
-    ) -> datafusion_common::Result<FileEncryptionProperties>;
+    ) -> datafusion_common::Result<Option<FileEncryptionProperties>>;
 
     /// Generate file decryption properties to use when reading a Parquet file.
     fn get_file_decryption_properties(
         &self,
         options: &TableParquetOptions,
         file_path: &Path,
-    ) -> datafusion_common::Result<FileDecryptionProperties>;
+    ) -> datafusion_common::Result<Option<FileDecryptionProperties>>;
 }
 
 #[derive(Clone, Debug, Default)]
