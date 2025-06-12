@@ -2,9 +2,7 @@ use arrow::datatypes::SchemaRef;
 use dashmap::DashMap;
 use datafusion_common::config::TableParquetOptions;
 use datafusion_common::DataFusionError;
-#[cfg(feature = "parquet")]
 use parquet::encryption::decrypt::FileDecryptionProperties;
-#[cfg(feature = "parquet")]
 use parquet::encryption::encrypt::FileEncryptionProperties;
 use std::sync::Arc;
 
@@ -12,7 +10,6 @@ use std::sync::Arc;
 /// write and read encrypted Parquet files.
 /// This allows flexibility in how encryption keys are managed, for example, to
 /// integrate with a user's key management service (KMS).
-#[cfg(feature = "parquet")]
 pub trait EncryptionFactory: Send + Sync + std::fmt::Debug + 'static {
     /// Generate file encryption properties to use when writing a Parquet file.
     fn get_file_encryption_properties(
@@ -32,11 +29,9 @@ pub trait EncryptionFactory: Send + Sync + std::fmt::Debug + 'static {
 
 #[derive(Clone, Debug, Default)]
 pub struct EncryptionFactoryRegistry {
-    #[cfg(feature = "parquet")]
     factories: DashMap<String, Arc<dyn EncryptionFactory>>,
 }
 
-#[cfg(feature = "parquet")]
 impl EncryptionFactoryRegistry {
     pub fn register_factory(
         &self,

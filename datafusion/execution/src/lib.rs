@@ -31,6 +31,7 @@ pub mod config;
 pub mod disk_manager;
 pub mod memory_pool;
 pub mod object_store;
+#[cfg(feature = "parquet")]
 pub mod parquet;
 pub mod runtime_env;
 mod stream;
