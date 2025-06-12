@@ -42,7 +42,7 @@ use tempfile::TempDir;
 /// are encrypted using Parquet Modular Encryption, and uses the
 /// parquet-key-management crate to integrate with a Key Management Server (KMS).
 
-const ENCRYPTION_FACTORY_ID: &'static str = "example.inmem_kms_encryption";
+const ENCRYPTION_FACTORY_ID: &'static str = "example.memory_kms_encryption";
 
 #[tokio::main]
 async fn main() -> Result<()> {

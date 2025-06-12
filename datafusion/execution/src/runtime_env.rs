@@ -30,8 +30,7 @@ use crate::{
 
 use crate::cache::cache_manager::{CacheManager, CacheManagerConfig};
 #[cfg(feature = "parquet")]
-use crate::parquet::EncryptionFactory;
-use crate::parquet::EncryptionFactoryRegistry;
+use crate::parquet::{EncryptionFactory, EncryptionFactoryRegistry};
 use datafusion_common::{config::ConfigEntry, Result};
 use object_store::ObjectStore;
 use std::path::PathBuf;
@@ -82,6 +81,7 @@ pub struct RuntimeEnv {
     /// Object Store Registry
     pub object_store_registry: Arc<dyn ObjectStoreRegistry>,
     /// Parquet encryption factory registry
+    #[cfg(feature = "parquet")]
     pub parquet_encryption_factory_registry: Arc<EncryptionFactoryRegistry>,
 }
 
@@ -209,6 +209,7 @@ pub struct RuntimeEnvBuilder {
     /// ObjectStoreRegistry to get object store based on url
     pub object_store_registry: Arc<dyn ObjectStoreRegistry>,
     /// Parquet encryption factory registry
+    #[cfg(feature = "parquet")]
     pub parquet_encryption_factory_registry: Arc<EncryptionFactoryRegistry>,
 }
 
