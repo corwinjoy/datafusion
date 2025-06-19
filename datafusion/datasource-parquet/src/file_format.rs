@@ -335,12 +335,15 @@ fn get_file_decryption_properties(
                 let fd: FileDecryptionProperties = cfd.clone().into();
                 Some(fd)
             }
-            None => match &options.crypto.encryption_factory_id {
+            None => match &options.crypto.factory_id {
                 Some(factory_id) => {
                     let factory = state
                         .runtime_env()
                         .parquet_encryption_factory(&factory_id)?;
-                    factory.get_file_decryption_properties(options, file_path)?
+                    factory.get_file_decryption_properties(
+                        &options.crypto.factory_options.options,
+                        file_path,
+                    )?
                 }
                 None => None,
             },
@@ -466,7 +469,7 @@ impl FileFormat for ParquetFormat {
             source = source.with_metadata_size_hint(metadata_size_hint)
         }
 
-        if let Some(encryption_factory_id) = &self.options.crypto.encryption_factory_id {
+        if let Some(encryption_factory_id) = &self.options.crypto.factory_id {
             source = source.with_encryption_factory(
                 state
                     .runtime_env()
@@ -1277,13 +1280,15 @@ impl ParquetSink {
         }
 
         let mut builder = WriterPropertiesBuilder::try_from(&parquet_opts)?;
-        if let Some(encryption_factory_id) =
-            self.parquet_options.crypto.encryption_factory_id.as_ref()
-        {
+        if let Some(encryption_factory_id) = &parquet_opts.crypto.factory_id.as_ref() {
             let encryption_factory =
                 runtime.parquet_encryption_factory(encryption_factory_id)?;
             let file_encryption_properties = encryption_factory
-                .get_file_encryption_properties(&parquet_opts, schema, path)?;
+                .get_file_encryption_properties(
+                    &parquet_opts.crypto.factory_options.options,
+                    schema,
+                    path,
+                )?;
             if let Some(file_encryption_properties) = file_encryption_properties {
                 builder =
                     builder.with_file_encryption_properties(file_encryption_properties);
@@ -1346,7 +1351,7 @@ impl FileSink for ParquetSink {
             parquet_opts.global.allow_single_file_parallelism;
 
         if parquet_opts.crypto.file_encryption.is_some()
-            || parquet_opts.crypto.encryption_factory_id.is_some()
+            || parquet_opts.crypto.factory_id.is_some()
         {
             // For now, arrow-rs does not support parallel writes with encryption
             // See https://github.com/apache/arrow-rs/issues/7359

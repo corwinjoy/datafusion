@@ -17,6 +17,7 @@
 
 use arrow::array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use arrow_schema::SchemaRef;
+use datafusion::common::DataFusionError;
 use datafusion::config::TableParquetOptions;
 use datafusion::dataframe::DataFrameWriteOptions;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
@@ -82,12 +83,12 @@ async fn write_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
     let mut parquet_options = TableParquetOptions::new();
     // We specify that we want to use Parquet encryption by setting the identifier of the
     // encryption factory to use.
-    parquet_options.crypto.encryption_factory_id = Some(ENCRYPTION_FACTORY_ID.to_owned());
+    parquet_options.crypto.factory_id = Some(ENCRYPTION_FACTORY_ID.to_owned());
     // Our encryption factory requires specifying the master key identifier to
     // use for encryption. To support arbitrary configuration options for different encryption factories,
     // DataFusion could use a HashMap<String, String> field for encryption options.
-    //let encryption_config = EncryptionConfig::new("kf".to_owned());
-    //parquet_options.encryption.factory_options = encryption_config.to_config_map();
+    let encryption_config = EncryptionConfig::new("kf".to_owned());
+    parquet_options.crypto.factory_options.options = encryption_config.to_config_map();
 
     df.write_parquet(
         tmpdir.path().to_str().unwrap(),
@@ -107,7 +108,7 @@ async fn read_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
     // Specify the encryption factory to use for decrypting Parquet.
     // In this example, we don't require any additional configuration options when reading
     // as key identifiers are stored in the key metadata.
-    parquet_options.crypto.encryption_factory_id = Some(ENCRYPTION_FACTORY_ID.to_owned());
+    parquet_options.crypto.factory_id = Some(ENCRYPTION_FACTORY_ID.to_owned());
 
     let file_format = ParquetFormat::default().with_options(parquet_options);
     let listing_options = ListingOptions::new(Arc::new(file_format));
@@ -177,17 +178,15 @@ impl EncryptionFactory for KmsEncryptionFactory {
     /// stored in a JSON file alongside Parquet files).
     fn get_file_encryption_properties(
         &self,
-        _options: &TableParquetOptions,
+        config: &HashMap<String, String>,
         _schema: &SchemaRef,
         _file_path: &Path,
     ) -> Result<Option<FileEncryptionProperties>> {
-        //let config: &HashMap<String, String> = options.encryption.factory_options;
-        //let footer_key_id = config.get("footer_key_id").cloned().ok_or_else(|| {
-        //    DataFusionError::Configuration(
-        //        "Footer key id for encryption is not set".to_owned(),
-        //    )
-        //})?;
-        let footer_key_id = "kf".to_owned();
+        let footer_key_id = config.get("footer_key_id").cloned().ok_or_else(|| {
+            DataFusionError::Configuration(
+                "Footer key id for encryption is not set".to_owned(),
+            )
+        })?;
         // We could configure per-column keys using the provided schema,
         // but for simplicity this example uses uniform encryption.
         let config = EncryptionConfiguration::builder(footer_key_id).build()?;
@@ -204,7 +203,7 @@ impl EncryptionFactory for KmsEncryptionFactory {
     /// The `file_path` needs to be known to support encryption factories that use external key material.
     fn get_file_decryption_properties(
         &self,
-        _options: &TableParquetOptions,
+        _config: &HashMap<String, String>,
         _file_path: &Path,
     ) -> Result<Option<FileDecryptionProperties>> {
         let config = DecryptionConfiguration::builder().build();
