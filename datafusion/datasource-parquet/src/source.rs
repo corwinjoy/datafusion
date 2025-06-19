@@ -521,6 +521,12 @@ impl FileSource for ParquetSource {
             coerce_int96,
             file_decryption_properties,
             encryption_factory: self.encryption_factory.clone(),
+            encryption_factory_config: self
+                .table_parquet_options
+                .crypto
+                .factory_options
+                .options
+                .clone(),
         })
     }
 

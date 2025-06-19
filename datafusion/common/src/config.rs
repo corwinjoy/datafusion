@@ -610,7 +610,13 @@ config_namespace! {
         /// Optional file encryption properties
         pub file_encryption: Option<ConfigFileEncryptionProperties>, default = None
 
-        pub encryption_factory_id: Option<String>, default = None
+        /// Identifier for the encryption factory to use to create file encryption and decryption properties.
+        /// Encryption factories can be registered in a session with
+        /// [`SessionConfig::register_parquet_encryption_factory`].
+        pub factory_id: Option<String>, default = None
+
+        /// Any encryption factory specific options
+        pub factory_options: EncryptionFactoryOptions, default = EncryptionFactoryOptions::default()
     }
 }
 
@@ -2238,6 +2244,28 @@ impl From<&FileDecryptionProperties> for ConfigFileDecryptionProperties {
             aad_prefix_as_hex: hex::encode(aad_prefix),
             footer_signature_verification: true, //f.check_plaintext_footer_integrity(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EncryptionFactoryOptions {
+    pub options: HashMap<String, String>,
+}
+
+impl ConfigField for EncryptionFactoryOptions {
+    fn visit<V: Visit>(&self, v: &mut V, key: &str, _description: &'static str) {
+        for (option_key, option_value) in &self.options {
+            v.some(
+                &format!("{}.{}", key, option_key),
+                option_value,
+                "Encryption factory specific option",
+            );
+        }
+    }
+
+    fn set(&mut self, key: &str, value: &str) -> Result<()> {
+        self.options.insert(key.to_owned(), value.to_owned());
+        Ok(())
     }
 }
 
