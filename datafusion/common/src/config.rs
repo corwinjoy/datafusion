@@ -194,6 +194,7 @@ macro_rules! config_namespace {
         }
     }
 }
+
 config_namespace! {
     /// Options related to catalog and directory scanning
     ///
@@ -608,6 +609,14 @@ config_namespace! {
 
         /// Optional file encryption properties
         pub file_encryption: Option<ConfigFileEncryptionProperties>, default = None
+
+        /// Identifier for the encryption factory to use to create file encryption and decryption properties.
+        /// Encryption factories can be registered in a session with
+        /// [`SessionConfig::register_parquet_encryption_factory`].
+        pub factory_id: Option<String>, default = None
+
+        /// Any encryption factory specific options
+        pub factory_options: EncryptionFactoryOptions, default = EncryptionFactoryOptions::default()
     }
 }
 
@@ -2194,9 +2203,9 @@ impl From<ConfigFileDecryptionProperties> for FileDecryptionProperties {
         .with_column_keys(column_names, column_keys)
         .unwrap();
 
-        if !val.footer_signature_verification {
-            fep = fep.disable_footer_signature_verification();
-        }
+        //if !val.footer_signature_verification {
+        //    fep = fep.disable_footer_signature_verification();
+        //}
 
         if !val.aad_prefix_as_hex.is_empty() {
             let aad_prefix =
@@ -2233,8 +2242,30 @@ impl From<&FileDecryptionProperties> for ConfigFileDecryptionProperties {
             ),
             column_decryption_properties,
             aad_prefix_as_hex: hex::encode(aad_prefix),
-            footer_signature_verification: f.check_plaintext_footer_integrity(),
+            footer_signature_verification: true, //f.check_plaintext_footer_integrity(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct EncryptionFactoryOptions {
+    pub options: HashMap<String, String>,
+}
+
+impl ConfigField for EncryptionFactoryOptions {
+    fn visit<V: Visit>(&self, v: &mut V, key: &str, description: &'static str) {
+        for (option_key, option_value) in &self.options {
+            v.some(
+                &format!("{}.{}", key, option_key),
+                option_value,
+                description,
+            );
+        }
+    }
+
+    fn set(&mut self, key: &str, value: &str) -> Result<()> {
+        self.options.insert(key.to_owned(), value.to_owned());
+        Ok(())
     }
 }
 

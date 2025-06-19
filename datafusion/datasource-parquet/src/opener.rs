@@ -17,6 +17,7 @@
 
 //! [`ParquetOpener`] for opening Parquet files
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::page_filter::PagePruningAccessPlanFilter;
@@ -36,6 +37,7 @@ use datafusion_physical_expr_common::physical_expr::PhysicalExpr;
 use datafusion_physical_optimizer::pruning::PruningPredicate;
 use datafusion_physical_plan::metrics::{Count, ExecutionPlanMetricsSet, MetricBuilder};
 
+use datafusion_execution::parquet::EncryptionFactory;
 use futures::{StreamExt, TryStreamExt};
 use log::debug;
 use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions};
@@ -85,13 +87,18 @@ pub(super) struct ParquetOpener {
     pub coerce_int96: Option<TimeUnit>,
     /// Optional parquet FileDecryptionProperties
     pub file_decryption_properties: Option<Arc<FileDecryptionProperties>>,
+    /// Optional factory to create file decryption properties dynamically
+    pub encryption_factory: Option<Arc<dyn EncryptionFactory>>,
+    /// Configuration options for the encryption factory
+    pub encryption_factory_config: HashMap<String, String>,
 }
 
 impl FileOpener for ParquetOpener {
     fn open(&self, file_meta: FileMeta) -> Result<FileOpenFuture> {
         let file_range = file_meta.range.clone();
         let extensions = file_meta.extensions.clone();
-        let file_name = file_meta.location().to_string();
+        let file_location = file_meta.location().clone();
+        let file_name = file_location.to_string();
         let file_metrics =
             ParquetFileMetrics::new(self.partition_index, &file_name, &self.metrics);
 
@@ -126,7 +133,20 @@ impl FileOpener for ParquetOpener {
             .global_counter("num_predicate_creation_errors");
 
         let mut enable_page_index = self.enable_page_index;
-        let file_decryption_properties = self.file_decryption_properties.clone();
+        let mut file_decryption_properties = self.file_decryption_properties.clone();
+
+        // Creating props is delayed until here so that the file url/path is available,
+        // and we can handle errors.
+        if let Some(encryption_factory) = &self.encryption_factory {
+            if file_decryption_properties.is_none() {
+                file_decryption_properties = encryption_factory
+                    .get_file_decryption_properties(
+                        &self.encryption_factory_config,
+                        &file_location,
+                    )?
+                    .map(|props| Arc::new(props));
+            }
+        }
 
         // For now, page index does not work with encrypted files. See:
         // https://github.com/apache/arrow-rs/issues/7629
