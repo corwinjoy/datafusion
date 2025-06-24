@@ -24,7 +24,6 @@ use datafusion::datasource::file_format::parquet::ParquetFormat;
 use datafusion::datasource::listing::ListingOptions;
 use datafusion::error::Result;
 use datafusion::execution::parquet::EncryptionFactory;
-use datafusion::physical_plan::execute_stream;
 use datafusion::prelude::SessionContext;
 use futures::StreamExt;
 use object_store::path::Path;
@@ -65,19 +64,33 @@ async fn main() -> Result<()> {
         Arc::new(encryption_factory),
     );
 
-    let tmpdir = TempDir::new()?;
-    write_encrypted(&ctx, &tmpdir).await?;
-    read_encrypted(&ctx, &tmpdir).await?;
+    // Register some simple test data
+    let a: ArrayRef = Arc::new(StringArray::from(vec!["a", "b", "c", "d"]));
+    let b: ArrayRef = Arc::new(Int32Array::from(vec![1, 10, 10, 100]));
+    let batch = RecordBatch::try_from_iter(vec![("a", a), ("b", b)])?;
+    ctx.register_batch("test_data", batch)?;
+
+    {
+        // Write and read with the programmatic API
+        let tmpdir = TempDir::new()?;
+        write_encrypted(&ctx, &tmpdir).await?;
+        let file_path = std::fs::read_dir(&tmpdir)?.next().unwrap()?.path();
+        read_encrypted(&ctx, &file_path).await?;
+    }
+
+    {
+        // Write and read with the SQL API
+        let tmpdir = TempDir::new()?;
+        write_encrypted_with_sql(&ctx, &tmpdir).await?;
+        let file_path = std::fs::read_dir(&tmpdir)?.next().unwrap()?.path();
+        read_encrypted_with_sql(&ctx, &file_path).await?;
+    }
+
     Ok(())
 }
 
 /// Write an encrypted Parquet file
 async fn write_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
-    let a: ArrayRef = Arc::new(StringArray::from(vec!["a", "b", "c", "d"]));
-    let b: ArrayRef = Arc::new(Int32Array::from(vec![1, 10, 10, 100]));
-    let batch = RecordBatch::try_from_iter(vec![("a", a), ("b", b)])?;
-
-    ctx.register_batch("test_data", batch)?;
     let df = ctx.table("test_data").await?;
 
     let mut parquet_options = TableParquetOptions::new();
@@ -98,12 +111,11 @@ async fn write_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
     .await?;
 
     println!("Encrypted Parquet written to {:?}", tmpdir.path());
-
     Ok(())
 }
 
 /// Read from an encrypted Parquet file
-async fn read_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
+async fn read_encrypted(ctx: &SessionContext, file_path: &std::path::Path) -> Result<()> {
     let mut parquet_options = TableParquetOptions::new();
     // Specify the encryption factory to use for decrypting Parquet.
     // In this example, we don't require any additional configuration options when reading
@@ -113,8 +125,7 @@ async fn read_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
     let file_format = ParquetFormat::default().with_options(parquet_options);
     let listing_options = ListingOptions::new(Arc::new(file_format));
 
-    let file_name = std::fs::read_dir(tmpdir)?.next().unwrap()?;
-    let table_path = format!("file://{}", file_name.path().as_os_str().to_str().unwrap());
+    let table_path = format!("file://{}", file_path.to_str().unwrap());
 
     let _ = ctx
         .register_listing_table(
@@ -127,9 +138,51 @@ async fn read_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
         .await?;
 
     let df = ctx.sql("SELECT * FROM encrypted_parquet_table").await?;
-    let plan = df.create_physical_plan().await?;
+    let mut batch_stream = df.execute_stream().await?;
+    println!("Reading encrypted Parquet as a RecordBatch stream");
+    while let Some(batch) = batch_stream.next().await {
+        let batch = batch?;
+        println!("Read batch with {} rows", batch.num_rows());
+    }
 
-    let mut batch_stream = execute_stream(plan.clone(), ctx.task_ctx())?;
+    println!("Finished reading");
+    Ok(())
+}
+
+/// Write an encrypted Parquet file using only SQL syntax with string configuration
+async fn write_encrypted_with_sql(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
+    let output_path = tmpdir.path().to_str().unwrap();
+    let query = format!(
+        "COPY test_data \
+        TO '{output_path}' \
+        STORED AS parquet
+        OPTIONS (\
+            'format.crypto.factory_id' '{ENCRYPTION_FACTORY_ID}', \
+            'format.crypto.factory_options.footer_key_id' 'kf' \
+        )"
+    );
+    let _ = ctx.sql(&query).await?.collect().await?;
+
+    println!("Encrypted Parquet written to {:?}", tmpdir.path());
+    Ok(())
+}
+
+/// Read from an encrypted Parquet file using only the SQL API and string based configuration
+async fn read_encrypted_with_sql(
+    ctx: &SessionContext,
+    file_path: &std::path::Path,
+) -> Result<()> {
+    let file_path = file_path.to_str().unwrap();
+    let ddl = format!(
+        "CREATE EXTERNAL TABLE encrypted_parquet_table_2 \
+        STORED AS PARQUET LOCATION '{file_path}' OPTIONS (\
+        'format.crypto.factory_id' '{ENCRYPTION_FACTORY_ID}' \
+        )"
+    );
+    ctx.sql(&ddl).await?;
+    let df = ctx.sql("SELECT * FROM encrypted_parquet_table_2").await?;
+    let mut batch_stream = df.execute_stream().await?;
+
     println!("Reading encrypted Parquet as a RecordBatch stream");
     while let Some(batch) = batch_stream.next().await {
         let batch = batch?;
