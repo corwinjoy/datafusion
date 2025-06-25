@@ -22,7 +22,7 @@ use super::{DataFilePaths, DataFrame, ExecutionPlan, Result, SessionContext};
 use datafusion_datasource_parquet::plan_to_parquet;
 
 use datafusion_common::TableReference;
-use datafusion_execution::parquet::EncryptionFactory;
+use datafusion_execution::parquet::DynEncryptionFactory;
 use parquet::file::properties::WriterProperties;
 
 impl SessionContext {
@@ -103,8 +103,8 @@ impl SessionContext {
     pub fn register_parquet_encryption_factory(
         &self,
         id: &str,
-        encryption_factory: Arc<dyn EncryptionFactory>,
-    ) -> Option<Arc<dyn EncryptionFactory>> {
+        encryption_factory: Arc<dyn DynEncryptionFactory>,
+    ) -> Option<Arc<dyn DynEncryptionFactory>> {
         self.runtime_env()
             .register_parquet_encryption_factory(id, encryption_factory)
     }

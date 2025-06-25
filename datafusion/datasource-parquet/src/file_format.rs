@@ -341,7 +341,7 @@ fn get_file_decryption_properties(
                         .runtime_env()
                         .parquet_encryption_factory(&factory_id)?;
                     factory.get_file_decryption_properties(
-                        &options.crypto.factory_options.options,
+                        &options.crypto.factory_options,
                         file_path,
                     )?
                 }
@@ -1285,7 +1285,7 @@ impl ParquetSink {
                 runtime.parquet_encryption_factory(encryption_factory_id)?;
             let file_encryption_properties = encryption_factory
                 .get_file_encryption_properties(
-                    &parquet_opts.crypto.factory_options.options,
+                    &parquet_opts.crypto.factory_options,
                     schema,
                     path,
                 )?;

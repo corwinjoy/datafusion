@@ -17,7 +17,6 @@
 
 //! [`ParquetOpener`] for opening Parquet files
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::page_filter::PagePruningAccessPlanFilter;
@@ -37,7 +36,8 @@ use datafusion_physical_expr_common::physical_expr::PhysicalExpr;
 use datafusion_physical_optimizer::pruning::PruningPredicate;
 use datafusion_physical_plan::metrics::{Count, ExecutionPlanMetricsSet, MetricBuilder};
 
-use datafusion_execution::parquet::EncryptionFactory;
+use datafusion_common::config::EncryptionFactoryOptions;
+use datafusion_execution::parquet::DynEncryptionFactory;
 use futures::{StreamExt, TryStreamExt};
 use log::debug;
 use parquet::arrow::arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions};
@@ -88,9 +88,8 @@ pub(super) struct ParquetOpener {
     /// Optional parquet FileDecryptionProperties
     pub file_decryption_properties: Option<Arc<FileDecryptionProperties>>,
     /// Optional factory to create file decryption properties dynamically
-    pub encryption_factory: Option<Arc<dyn EncryptionFactory>>,
-    /// Configuration options for the encryption factory
-    pub encryption_factory_config: HashMap<String, String>,
+    pub encryption_factory:
+        Option<(Arc<dyn DynEncryptionFactory>, EncryptionFactoryOptions)>,
 }
 
 impl FileOpener for ParquetOpener {
@@ -137,13 +136,10 @@ impl FileOpener for ParquetOpener {
 
         // Creating props is delayed until here so that the file url/path is available,
         // and we can handle errors.
-        if let Some(encryption_factory) = &self.encryption_factory {
+        if let Some((encryption_factory, encryption_config)) = &self.encryption_factory {
             if file_decryption_properties.is_none() {
                 file_decryption_properties = encryption_factory
-                    .get_file_decryption_properties(
-                        &self.encryption_factory_config,
-                        &file_location,
-                    )?
+                    .get_file_decryption_properties(&encryption_config, &file_location)?
                     .map(|props| Arc::new(props));
             }
         }

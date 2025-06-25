@@ -30,7 +30,7 @@ use crate::{
 
 use crate::cache::cache_manager::{CacheManager, CacheManagerConfig};
 #[cfg(feature = "parquet")]
-use crate::parquet::{EncryptionFactory, EncryptionFactoryRegistry};
+use crate::parquet::{DynEncryptionFactory, EncryptionFactoryRegistry};
 use datafusion_common::{config::ConfigEntry, Result};
 use object_store::ObjectStore;
 use std::path::PathBuf;
@@ -164,8 +164,8 @@ impl RuntimeEnv {
     pub fn register_parquet_encryption_factory(
         &self,
         id: &str,
-        encryption_factory: Arc<dyn EncryptionFactory>,
-    ) -> Option<Arc<dyn EncryptionFactory>> {
+        encryption_factory: Arc<dyn DynEncryptionFactory>,
+    ) -> Option<Arc<dyn DynEncryptionFactory>> {
         self.parquet_encryption_factory_registry
             .register_factory(id, encryption_factory)
     }
@@ -174,7 +174,7 @@ impl RuntimeEnv {
     pub fn parquet_encryption_factory(
         &self,
         id: &str,
-    ) -> Result<Arc<dyn EncryptionFactory>> {
+    ) -> Result<Arc<dyn DynEncryptionFactory>> {
         self.parquet_encryption_factory_registry.get_factory(id)
     }
 }

@@ -17,7 +17,7 @@
 
 use arrow::array::{ArrayRef, Int32Array, RecordBatch, StringArray};
 use arrow_schema::SchemaRef;
-use datafusion::common::DataFusionError;
+use datafusion::common::{extensions_options, DataFusionError};
 use datafusion::config::TableParquetOptions;
 use datafusion::dataframe::DataFrameWriteOptions;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
@@ -34,7 +34,6 @@ use parquet_key_management::crypto_factory::{
 };
 use parquet_key_management::kms::KmsConnectionConfig;
 use parquet_key_management::test_kms::TestKmsClientFactory;
-use std::collections::HashMap;
 use std::fmt::Formatter;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -95,13 +94,14 @@ async fn write_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
 
     let mut parquet_options = TableParquetOptions::new();
     // We specify that we want to use Parquet encryption by setting the identifier of the
-    // encryption factory to use.
-    parquet_options.crypto.factory_id = Some(ENCRYPTION_FACTORY_ID.to_owned());
+    // encryption factory to use and providing the factory specific configuration.
     // Our encryption factory requires specifying the master key identifier to
-    // use for encryption. To support arbitrary configuration options for different encryption factories,
-    // DataFusion could use a HashMap<String, String> field for encryption options.
-    let encryption_config = EncryptionConfig::new("kf".to_owned());
-    parquet_options.crypto.factory_options.options = encryption_config.to_config_map();
+    // use for encryption.
+    let mut encryption_config = KmsEncryptionConfig::default();
+    encryption_config.footer_key_id = "kf".to_owned();
+    parquet_options
+        .crypto
+        .set_factory(ENCRYPTION_FACTORY_ID, &encryption_config);
 
     df.write_parquet(
         tmpdir.path().to_str().unwrap(),
@@ -120,7 +120,9 @@ async fn read_encrypted(ctx: &SessionContext, file_path: &std::path::Path) -> Re
     // Specify the encryption factory to use for decrypting Parquet.
     // In this example, we don't require any additional configuration options when reading
     // as key identifiers are stored in the key metadata.
-    parquet_options.crypto.factory_id = Some(ENCRYPTION_FACTORY_ID.to_owned());
+    parquet_options
+        .crypto
+        .set_factory(ENCRYPTION_FACTORY_ID, &KmsEncryptionConfig::default());
 
     let file_format = ParquetFormat::default().with_options(parquet_options);
     let listing_options = ListingOptions::new(Arc::new(file_format));
@@ -193,19 +195,9 @@ async fn read_encrypted_with_sql(
 }
 
 // Options used to configure our example encryption factory
-struct EncryptionConfig {
-    pub footer_key_id: String,
-}
-
-impl EncryptionConfig {
-    pub fn new(footer_key_id: String) -> Self {
-        Self { footer_key_id }
-    }
-
-    pub fn to_config_map(self) -> HashMap<String, String> {
-        let mut config = HashMap::new();
-        config.insert("footer_key_id".to_string(), self.footer_key_id);
-        config
+extensions_options! {
+    struct KmsEncryptionConfig {
+        pub footer_key_id: String, default = "".to_owned()
     }
 }
 
@@ -223,6 +215,8 @@ impl std::fmt::Debug for KmsEncryptionFactory {
 /// `EncryptionFactory` is a trait defined by DataFusion that allows generating
 /// file encryption and decryption properties.
 impl EncryptionFactory for KmsEncryptionFactory {
+    type Options = KmsEncryptionConfig;
+
     /// Generate file encryption properties to use when writing a Parquet file.
     /// The `FileSinkConfig` is provided so that the schema may be used to dynamically configure
     /// per-column encryption keys.
@@ -231,39 +225,40 @@ impl EncryptionFactory for KmsEncryptionFactory {
     /// stored in a JSON file alongside Parquet files).
     fn get_file_encryption_properties(
         &self,
-        config: &HashMap<String, String>,
+        config: &KmsEncryptionConfig,
         _schema: &SchemaRef,
         _file_path: &Path,
     ) -> Result<Option<FileEncryptionProperties>> {
-        let footer_key_id = config.get("footer_key_id").cloned().ok_or_else(|| {
-            DataFusionError::Configuration(
+        if config.footer_key_id.is_empty() {
+            return Err(DataFusionError::Configuration(
                 "Footer key id for encryption is not set".to_owned(),
-            )
-        })?;
+            ));
+        };
         // We could configure per-column keys using the provided schema,
         // but for simplicity this example uses uniform encryption.
-        let config = EncryptionConfiguration::builder(footer_key_id).build()?;
+        let encryption_config =
+            EncryptionConfiguration::builder(config.footer_key_id.clone()).build()?;
         // Similarly, the KMS connection could be configured from the options if needed, but this
         // example just uses the default options.
         let kms_config = Arc::new(KmsConnectionConfig::default());
-        Ok(Some(
-            self.crypto_factory
-                .file_encryption_properties(kms_config, &config)?,
-        ))
+        Ok(Some(self.crypto_factory.file_encryption_properties(
+            kms_config,
+            &encryption_config,
+        )?))
     }
 
     /// Generate file decryption properties to use when reading a Parquet file.
     /// The `file_path` needs to be known to support encryption factories that use external key material.
     fn get_file_decryption_properties(
         &self,
-        _config: &HashMap<String, String>,
+        _config: &KmsEncryptionConfig,
         _file_path: &Path,
     ) -> Result<Option<FileDecryptionProperties>> {
-        let config = DecryptionConfiguration::builder().build();
+        let decryption_config = DecryptionConfiguration::builder().build();
         let kms_config = Arc::new(KmsConnectionConfig::default());
-        Ok(Some(
-            self.crypto_factory
-                .file_decryption_properties(kms_config, config)?,
-        ))
+        Ok(Some(self.crypto_factory.file_decryption_properties(
+            kms_config,
+            decryption_config,
+        )?))
     }
 }

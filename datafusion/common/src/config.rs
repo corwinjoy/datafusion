@@ -620,6 +620,19 @@ config_namespace! {
     }
 }
 
+impl ParquetEncryptionOptions {
+    /// Specify the encryption factory to use for Parquet modular encryption, along with its configuration
+    pub fn set_factory(&mut self, factory_id: &str, config: &impl ExtensionOptions) {
+        self.factory_id = Some(factory_id.to_owned());
+        self.factory_options.options.clear();
+        for entry in config.entries() {
+            if let Some(value) = entry.value {
+                self.factory_options.options.insert(entry.key, value);
+            }
+        }
+    }
+}
+
 config_namespace! {
     /// Options related to query optimization
     ///
