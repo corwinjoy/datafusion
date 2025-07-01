@@ -660,10 +660,6 @@ pub struct ParquetColumnOptions {
     pub bloom_filter_ndv_opt: ::core::option::Option<
         parquet_column_options::BloomFilterNdvOpt,
     >,
-    #[prost(oneof = "parquet_column_options::MaxStatisticsSizeOpt", tags = "8")]
-    pub max_statistics_size_opt: ::core::option::Option<
-        parquet_column_options::MaxStatisticsSizeOpt,
-    >,
 }
 /// Nested message and enum types in `ParquetColumnOptions`.
 pub mod parquet_column_options {
@@ -783,10 +779,6 @@ pub struct ParquetOptions {
     #[prost(oneof = "parquet_options::StatisticsEnabledOpt", tags = "13")]
     pub statistics_enabled_opt: ::core::option::Option<
         parquet_options::StatisticsEnabledOpt,
-    >,
-    #[prost(oneof = "parquet_options::MaxStatisticsSizeOpt", tags = "14")]
-    pub max_statistics_size_opt: ::core::option::Option<
-        parquet_options::MaxStatisticsSizeOpt,
     >,
     #[prost(oneof = "parquet_options::ColumnIndexTruncateLengthOpt", tags = "17")]
     pub column_index_truncate_length_opt: ::core::option::Option<
