@@ -1994,6 +1994,7 @@ dependencies = [
  "env_logger",
  "flate2",
  "futures",
+ "hex",
  "insta",
  "itertools 0.14.0",
  "log",
@@ -2283,6 +2284,7 @@ dependencies = [
  "datafusion-pruning",
  "datafusion-session",
  "futures",
+ "hex",
  "itertools 0.14.0",
  "log",
  "object_store",
@@ -6241,9 +6243,9 @@ dependencies = [
 
 [[package]]
 name = "substrait"
-version = "0.57.0"
+version = "0.58.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bc9c2fe95fd228d6178a0a6f0eadc758231c6df1eeabaa3517dfcd5454e4ef2"
+checksum = "de6d24c270c6c672a86c183c3a8439ba46c1936f93cf7296aa692de3b0ff0228"
 dependencies = [
  "heck 0.5.0",
  "pbjson",
