@@ -47,6 +47,7 @@ use datafusion_physical_plan::metrics::Count;
 use datafusion_physical_plan::metrics::ExecutionPlanMetricsSet;
 use datafusion_physical_plan::DisplayFormatType;
 
+use datafusion_execution::parquet::DynEncryptionFactory;
 use itertools::Itertools;
 use object_store::ObjectStore;
 /// Execution plan for reading one or more Parquet files.
@@ -277,6 +278,7 @@ pub struct ParquetSource {
     /// Optional hint for the size of the parquet metadata
     pub(crate) metadata_size_hint: Option<usize>,
     pub(crate) projected_statistics: Option<Statistics>,
+    pub(crate) encryption_factory: Option<Arc<dyn DynEncryptionFactory>>,
 }
 
 impl ParquetSource {
@@ -313,6 +315,15 @@ impl ParquetSource {
         conf = conf.with_metrics(metrics);
         conf.predicate = Some(Arc::clone(&predicate));
         conf
+    }
+
+    /// Set the encryption factory to use to generate file decryption properties
+    pub fn with_encryption_factory(
+        mut self,
+        encryption_factory: Arc<dyn DynEncryptionFactory>,
+    ) -> Self {
+        self.encryption_factory = Some(encryption_factory);
+        self
     }
 
     /// Options passed to the parquet reader for this scan
@@ -489,6 +500,14 @@ impl FileSource for ParquetSource {
             .as_ref()
             .map(|time_unit| parse_coerce_int96_string(time_unit.as_str()).unwrap());
 
+        let encryption_factory_with_config = match &self.encryption_factory {
+            None => None,
+            Some(factory) => Some((
+                Arc::clone(factory),
+                self.table_parquet_options.crypto.factory_options.clone(),
+            )),
+        };
+
         Arc::new(ParquetOpener {
             partition_index: partition,
             projection: Arc::from(projection),
@@ -510,6 +529,7 @@ impl FileSource for ParquetSource {
             schema_adapter_factory,
             coerce_int96,
             file_decryption_properties,
+            encryption_factory: encryption_factory_with_config,
         })
     }
 
