@@ -31,8 +31,8 @@ pub mod config;
 pub mod disk_manager;
 pub mod memory_pool;
 pub mod object_store;
-#[cfg(feature = "parquet")]
-pub mod parquet;
+#[cfg(feature = "parquet_encryption")]
+pub mod parquet_encryption;
 pub mod runtime_env;
 mod stream;
 mod task;

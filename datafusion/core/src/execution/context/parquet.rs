@@ -22,7 +22,8 @@ use super::{DataFilePaths, DataFrame, ExecutionPlan, Result, SessionContext};
 use datafusion_datasource_parquet::plan_to_parquet;
 
 use datafusion_common::TableReference;
-use datafusion_execution::parquet::DynEncryptionFactory;
+#[cfg(feature = "parquet_encryption")]
+use datafusion_execution::parquet_encryption::DynEncryptionFactory;
 use parquet::file::properties::WriterProperties;
 
 impl SessionContext {
@@ -99,6 +100,7 @@ impl SessionContext {
     /// Registers a Parquet [`EncryptionFactory`](crate::datasource::physical_plan::parquet::encryption::EncryptionFactory)
     /// with an associated unique identifier.
     /// If an encryption factory with the same identifier was already registered, it is replaced and returned.
+    #[cfg(feature = "parquet_encryption")]
     pub fn register_parquet_encryption_factory(
         &self,
         id: &str,

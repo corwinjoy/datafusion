@@ -2195,6 +2195,8 @@ dependencies = [
  "mimalloc",
  "nix",
  "object_store",
+ "parquet",
+ "parquet-key-management",
  "prost",
  "tempfile",
  "test-utils",
@@ -2220,6 +2222,7 @@ dependencies = [
  "log",
  "object_store",
  "parking_lot",
+ "parquet",
  "rand 0.9.1",
  "tempfile",
  "url",
@@ -4497,6 +4500,19 @@ dependencies = [
  "tokio",
  "twox-hash 2.1.0",
  "zstd",
+]
+
+[[package]]
+name = "parquet-key-management"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6ca5e1b8e689c2c75f611b0f6c51fec68d26809105533282bda28295dc3b1a0"
+dependencies = [
+ "base64 0.22.1",
+ "parquet",
+ "ring",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

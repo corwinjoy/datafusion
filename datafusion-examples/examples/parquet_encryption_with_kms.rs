@@ -23,7 +23,7 @@ use datafusion::dataframe::DataFrameWriteOptions;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
 use datafusion::datasource::listing::ListingOptions;
 use datafusion::error::Result;
-use datafusion::execution::parquet::EncryptionFactory;
+use datafusion::execution::parquet_encryption::EncryptionFactory;
 use datafusion::prelude::SessionContext;
 use futures::StreamExt;
 use object_store::path::Path;

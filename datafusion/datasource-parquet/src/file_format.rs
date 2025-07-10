@@ -39,9 +39,9 @@ use datafusion_datasource::write::demux::DemuxedStreamReceiver;
 use arrow::compute::sum;
 use arrow::datatypes::{DataType, Field, FieldRef};
 use datafusion_common::config::{ConfigField, ConfigFileType, TableParquetOptions};
-use datafusion_common::encryption::{
-    map_config_decryption_to_decryption, FileDecryptionProperties,
-};
+#[cfg(feature = "parquet_encryption")]
+use datafusion_common::encryption::map_config_decryption_to_decryption;
+use datafusion_common::encryption::FileDecryptionProperties;
 use datafusion_common::parsers::CompressionTypeVariant;
 use datafusion_common::stats::Precision;
 use datafusion_common::{
@@ -326,6 +326,7 @@ async fn fetch_schema_with_location(
     Ok((loc_path, schema))
 }
 
+#[cfg(feature = "parquet_encryption")]
 fn get_file_decryption_properties(
     state: &dyn Session,
     options: &TableParquetOptions,
@@ -334,9 +335,7 @@ fn get_file_decryption_properties(
     let config_file_decryption_properties = &options.crypto.file_decryption;
     let file_decryption_properties: Option<FileDecryptionProperties> =
         match config_file_decryption_properties {
-            Some(cfd) => {
-                map_config_decryption_to_decryption(Some(&cfd))
-            }
+            Some(cfd) => map_config_decryption_to_decryption(Some(&cfd)),
             None => match &options.crypto.factory_id {
                 Some(factory_id) => {
                     let factory = state
@@ -351,6 +350,15 @@ fn get_file_decryption_properties(
             },
         };
     Ok(file_decryption_properties)
+}
+
+#[cfg(not(feature = "parquet_encryption"))]
+fn get_file_decryption_properties(
+    _state: &dyn Session,
+    _options: &TableParquetOptions,
+    _file_path: &Path,
+) -> Result<Option<FileDecryptionProperties>> {
+    Ok(None)
 }
 
 #[async_trait]
@@ -472,13 +480,7 @@ impl FileFormat for ParquetFormat {
             source = source.with_metadata_size_hint(metadata_size_hint)
         }
 
-        if let Some(encryption_factory_id) = &self.options.crypto.factory_id {
-            source = source.with_encryption_factory(
-                state
-                    .runtime_env()
-                    .parquet_encryption_factory(&encryption_factory_id)?,
-            );
-        }
+        source = self.set_source_encryption_factory(source, state)?;
 
         // Apply schema adapter factory before building the new config
         let file_source = source.apply_schema_adapter(&conf)?;
@@ -507,6 +509,40 @@ impl FileFormat for ParquetFormat {
 
     fn file_source(&self) -> Arc<dyn FileSource> {
         Arc::new(ParquetSource::default())
+    }
+}
+
+#[cfg(feature = "parquet_encryption")]
+impl ParquetFormat {
+    fn set_source_encryption_factory(
+        &self,
+        source: ParquetSource,
+        state: &dyn Session,
+    ) -> Result<ParquetSource> {
+        if let Some(encryption_factory_id) = &self.options.crypto.factory_id {
+            Ok(source.with_encryption_factory(
+                state
+                    .runtime_env()
+                    .parquet_encryption_factory(&encryption_factory_id)?,
+            ))
+        } else {
+            Ok(source)
+        }
+    }
+}
+
+#[cfg(not(feature = "parquet_encryption"))]
+impl ParquetFormat {
+    fn set_source_encryption_factory(
+        &self,
+        source: ParquetSource,
+        _state: &dyn Session,
+    ) -> Result<ParquetSource> {
+        if let Some(encryption_factory_id) = &self.options.crypto.factory_id {
+            Err(DataFusionError::Configuration(format!("Parquet encryption factory id is set to '{encryption_factory_id}' but the parquet_encryption feature is disabled")))
+        } else {
+            Ok(source)
+        }
     }
 }
 
@@ -1287,20 +1323,13 @@ impl ParquetSink {
         }
 
         let mut builder = WriterPropertiesBuilder::try_from(&parquet_opts)?;
-        if let Some(encryption_factory_id) = &parquet_opts.crypto.factory_id.as_ref() {
-            let encryption_factory =
-                runtime.parquet_encryption_factory(encryption_factory_id)?;
-            let file_encryption_properties = encryption_factory
-                .get_file_encryption_properties(
-                    &parquet_opts.crypto.factory_options,
-                    schema,
-                    path,
-                )?;
-            if let Some(file_encryption_properties) = file_encryption_properties {
-                builder =
-                    builder.with_file_encryption_properties(file_encryption_properties);
-            }
-        }
+        builder = set_writer_encryption_properties(
+            builder,
+            runtime,
+            &parquet_opts,
+            schema,
+            path,
+        )?;
         Ok(builder.build())
     }
 
@@ -1338,6 +1367,43 @@ impl ParquetSink {
     pub fn parquet_options(&self) -> &TableParquetOptions {
         &self.parquet_options
     }
+}
+
+#[cfg(feature = "parquet_encryption")]
+fn set_writer_encryption_properties(
+    builder: WriterPropertiesBuilder,
+    runtime: &Arc<RuntimeEnv>,
+    parquet_opts: &TableParquetOptions,
+    schema: &Arc<Schema>,
+    path: &Path,
+) -> Result<WriterPropertiesBuilder> {
+    if let Some(encryption_factory_id) = &parquet_opts.crypto.factory_id.as_ref() {
+        let encryption_factory =
+            runtime.parquet_encryption_factory(encryption_factory_id)?;
+        let file_encryption_properties = encryption_factory
+            .get_file_encryption_properties(
+                &parquet_opts.crypto.factory_options,
+                schema,
+                path,
+            )?;
+        if let Some(file_encryption_properties) = file_encryption_properties {
+            return Ok(
+                builder.with_file_encryption_properties(file_encryption_properties)
+            );
+        }
+    }
+    Ok(builder)
+}
+
+#[cfg(not(feature = "parquet_encryption"))]
+fn set_writer_encryption_properties(
+    builder: WriterPropertiesBuilder,
+    _runtime: &Arc<RuntimeEnv>,
+    _parquet_opts: &TableParquetOptions,
+    _schema: &Arc<Schema>,
+    _path: &Path,
+) -> Result<WriterPropertiesBuilder> {
+    Ok(builder)
 }
 
 #[async_trait]

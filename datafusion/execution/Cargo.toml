@@ -37,6 +37,11 @@ workspace = true
 [lib]
 name = "datafusion_execution"
 
+[features]
+parquet_encryption = [
+    "parquet/encryption",
+]
+
 [dependencies]
 arrow = { workspace = true }
 dashmap = { workspace = true }
