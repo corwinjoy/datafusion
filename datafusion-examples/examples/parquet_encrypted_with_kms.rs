@@ -55,7 +55,6 @@ async fn main() -> Result<()> {
     // `EncryptionFactory` instances are registered with a name to identify them so
     // they can be later referenced in configuration options, and it's possible to register
     // multiple different factories to handle different ways of encrypting Parquet.
-    // In future it could be possible to have built-in implementations in DataFusion.
     let crypto_factory = CryptoFactory::new(TestKmsClientFactory::with_default_keys());
     let encryption_factory = KmsEncryptionFactory { crypto_factory };
     ctx.register_parquet_encryption_factory(

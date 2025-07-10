@@ -2348,9 +2348,9 @@ impl From<ConfigFileDecryptionProperties> for FileDecryptionProperties {
         .with_column_keys(column_names, column_keys)
         .unwrap();
 
-        //if !val.footer_signature_verification {
-        //    fep = fep.disable_footer_signature_verification();
-        //}
+        if !val.footer_signature_verification {
+            fep = fep.disable_footer_signature_verification();
+        }
 
         if !val.aad_prefix_as_hex.is_empty() {
             let aad_prefix =
@@ -2387,7 +2387,7 @@ impl From<&FileDecryptionProperties> for ConfigFileDecryptionProperties {
             ),
             column_decryption_properties,
             aad_prefix_as_hex: hex::encode(aad_prefix),
-            footer_signature_verification: true, //f.check_plaintext_footer_integrity(),
+            footer_signature_verification: f.check_plaintext_footer_integrity(),
         }
     }
 }
@@ -2401,7 +2401,7 @@ impl ConfigField for EncryptionFactoryOptions {
     fn visit<V: Visit>(&self, v: &mut V, key: &str, _description: &'static str) {
         for (option_key, option_value) in &self.options {
             v.some(
-                &format!("{}.{}", key, option_key),
+                &format!("{key}.{option_key}"),
                 option_value,
                 "Encryption factory specific option",
             );

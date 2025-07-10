@@ -335,7 +335,7 @@ fn get_file_decryption_properties(
     let config_file_decryption_properties = &options.crypto.file_decryption;
     let file_decryption_properties: Option<FileDecryptionProperties> =
         match config_file_decryption_properties {
-            Some(cfd) => map_config_decryption_to_decryption(Some(&cfd)),
+            Some(cfd) => map_config_decryption_to_decryption(Some(cfd)),
             None => match &options.crypto.factory_id {
                 Some(factory_id) => {
                     let factory = state
