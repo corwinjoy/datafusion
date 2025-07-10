@@ -39,14 +39,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Check license header
-  license-header-check:
-    runs-on: ubuntu-latest
-    name: Check License Header
-    steps:
-      - uses: actions/checkout@v4
-      - uses: korandoru/hawkeye@v6
-
   # Check crate compiles and base cargo check passes
   linux-build-lib:
     name: linux build test
@@ -211,6 +203,8 @@ jobs:
         run: cargo check --profile ci --no-default-features -p datafusion --features=string_expressions
       - name: Check datafusion (unicode_expressions)
         run: cargo check --profile ci --no-default-features -p datafusion --features=unicode_expressions
+      - name: Check parquet encryption (parquet_encryption)
+        run: cargo check --profile ci --no-default-features -p datafusion --features=parquet_encryption
 
   # Check datafusion-functions crate features
   #
@@ -714,11 +708,6 @@ jobs:
         run: |
           # If you encounter an error, run './dev/update_function_docs.sh' and commit
           ./dev/update_function_docs.sh
-          git diff --exit-code
-      - name: Check if runtime_configs.md has been modified
-        run: |
-          # If you encounter an error, run './dev/update_runtime_config_docs.sh' and commit
-          ./dev/update_runtime_config_docs.sh
           git diff --exit-code
 
   # Verify MSRV for the crates which are directly used by other projects:

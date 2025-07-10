@@ -32,7 +32,6 @@ use std::mem::{size_of, size_of_val};
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::arrow_datafusion_err;
 use crate::cast::{
     as_decimal128_array, as_decimal256_array, as_dictionary_array,
     as_fixed_size_binary_array, as_fixed_size_list_array,
@@ -41,6 +40,7 @@ use crate::error::{DataFusionError, Result, _exec_err, _internal_err, _not_impl_
 use crate::format::DEFAULT_CAST_OPTIONS;
 use crate::hash_utils::create_hashes;
 use crate::utils::SingleRowListArrayBuilder;
+use crate::{_internal_datafusion_err, arrow_datafusion_err};
 use arrow::array::{
     types::{IntervalDayTime, IntervalMonthDayNano},
     *,
@@ -52,13 +52,14 @@ use arrow::compute::kernels::{
 };
 use arrow::datatypes::{
     i256, ArrowDictionaryKeyType, ArrowNativeType, ArrowTimestampType, DataType,
-    Date32Type, Date64Type, Field, Float32Type, Int16Type, Int32Type, Int64Type,
-    Int8Type, IntervalDayTimeType, IntervalMonthDayNanoType, IntervalUnit,
-    IntervalYearMonthType, TimeUnit, TimestampMicrosecondType, TimestampMillisecondType,
+    Date32Type, Field, Float32Type, Int16Type, Int32Type, Int64Type, Int8Type,
+    IntervalDayTimeType, IntervalMonthDayNanoType, IntervalUnit, IntervalYearMonthType,
+    TimeUnit, TimestampMicrosecondType, TimestampMillisecondType,
     TimestampNanosecondType, TimestampSecondType, UInt16Type, UInt32Type, UInt64Type,
     UInt8Type, UnionFields, UnionMode, DECIMAL128_MAX_PRECISION,
 };
 use arrow::util::display::{array_value_to_string, ArrayFormatter, FormatOptions};
+use chrono::{Duration, NaiveDate};
 use half::f16;
 pub use struct_builder::ScalarStructBuilder;
 
@@ -1848,10 +1849,6 @@ impl ScalarValue {
     /// Returns an error if the iterator is empty or if the
     /// [`ScalarValue`]s are not all the same type
     ///
-    /// # Panics
-    ///
-    /// Panics if `self` is a dictionary with invalid key type
-    ///
     /// # Example
     /// ```
     /// use datafusion_common::ScalarValue;
@@ -3342,6 +3339,16 @@ impl ScalarValue {
         arr1 == &right
     }
 
+    /// Compare `self` with `other` and return an `Ordering`.
+    ///
+    /// This is the same as [`PartialOrd`] except that it returns
+    /// `Err` if the values cannot be compared, e.g., they have incompatible data types.
+    pub fn try_cmp(&self, other: &Self) -> Result<Ordering> {
+        self.partial_cmp(other).ok_or_else(|| {
+            _internal_datafusion_err!("Uncomparable values: {self:?}, {other:?}")
+        })
+    }
+
     /// Estimate size if bytes including `Self`. For values with internal containers such as `String`
     /// includes the allocated size (`capacity`) rather than the current length (`len`)
     pub fn size(&self) -> usize {
@@ -3525,11 +3532,44 @@ impl ScalarValue {
             }
         }
     }
+
+    /// Compacts ([ScalarValue::compact]) the current [ScalarValue] and returns it.
+    pub fn compacted(mut self) -> Self {
+        self.compact();
+        self
+    }
 }
 
-pub fn copy_array_data(data: &ArrayData) -> ArrayData {
-    let mut copy = MutableArrayData::new(vec![&data], true, data.len());
-    copy.extend(0, 0, data.len());
+/// Compacts the data of an `ArrayData` into a new `ArrayData`.
+///
+/// This is useful when you want to minimize the memory footprint of an
+/// `ArrayData`. For example, the value returned by [`Array::slice`] still
+/// points at the same underlying data buffers as the original array, which may
+/// hold many more values. Calling `copy_array_data` on the sliced array will
+/// create a new, smaller, `ArrayData` that only contains the data for the
+/// sliced array.
+///
+/// # Example
+/// ```
+/// # use arrow::array::{make_array, Array, Int32Array};
+/// use datafusion_common::scalar::copy_array_data;
+/// let array = Int32Array::from_iter_values(0..8192);
+/// // Take only the first 2 elements
+/// let sliced_array = array.slice(0, 2);
+/// // The memory footprint of `sliced_array` is close to 8192 * 4 bytes
+/// assert_eq!(32864, sliced_array.get_array_memory_size());
+/// // however, we can copy the data to a new `ArrayData`
+/// let new_array = make_array(copy_array_data(&sliced_array.into_data()));
+/// // The memory footprint of `new_array` is now only 2 * 4 bytes
+/// // and overhead:
+/// assert_eq!(160, new_array.get_array_memory_size());
+/// ```
+///
+/// See also [`ScalarValue::compact`] which applies to `ScalarValue` instances
+/// as necessary.
+pub fn copy_array_data(src_data: &ArrayData) -> ArrayData {
+    let mut copy = MutableArrayData::new(vec![&src_data], true, src_data.len());
+    copy.extend(0, 0, src_data.len());
     copy.freeze()
 }
 
@@ -3783,12 +3823,28 @@ impl fmt::Display for ScalarValue {
             ScalarValue::List(arr) => fmt_list(arr.to_owned() as ArrayRef, f)?,
             ScalarValue::LargeList(arr) => fmt_list(arr.to_owned() as ArrayRef, f)?,
             ScalarValue::FixedSizeList(arr) => fmt_list(arr.to_owned() as ArrayRef, f)?,
-            ScalarValue::Date32(e) => {
-                format_option!(f, e.map(|v| Date32Type::to_naive_date(v).to_string()))?
-            }
-            ScalarValue::Date64(e) => {
-                format_option!(f, e.map(|v| Date64Type::to_naive_date(v).to_string()))?
-            }
+            ScalarValue::Date32(e) => format_option!(
+                f,
+                e.map(|v| {
+                    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+                    match epoch.checked_add_signed(Duration::try_days(v as i64).unwrap())
+                    {
+                        Some(date) => date.to_string(),
+                        None => "".to_string(),
+                    }
+                })
+            )?,
+            ScalarValue::Date64(e) => format_option!(
+                f,
+                e.map(|v| {
+                    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+                    match epoch.checked_add_signed(Duration::try_milliseconds(v).unwrap())
+                    {
+                        Some(date) => date.to_string(),
+                        None => "".to_string(),
+                    }
+                })
+            )?,
             ScalarValue::Time32Second(e) => format_option!(f, e)?,
             ScalarValue::Time32Millisecond(e) => format_option!(f, e)?,
             ScalarValue::Time64Microsecond(e) => format_option!(f, e)?,
@@ -4709,6 +4765,32 @@ mod tests {
         let expect = timestamp.add(&interval)?;
         assert_eq!(result, expect);
         Ok(())
+    }
+
+    #[test]
+    fn test_try_cmp() {
+        assert_eq!(
+            ScalarValue::try_cmp(
+                &ScalarValue::Int32(Some(1)),
+                &ScalarValue::Int32(Some(2))
+            )
+            .unwrap(),
+            Ordering::Less
+        );
+        assert_eq!(
+            ScalarValue::try_cmp(&ScalarValue::Int32(None), &ScalarValue::Int32(Some(2)))
+                .unwrap(),
+            Ordering::Less
+        );
+        assert_starts_with(
+            ScalarValue::try_cmp(
+                &ScalarValue::Int32(Some(1)),
+                &ScalarValue::Int64(Some(2)),
+            )
+            .unwrap_err()
+            .message(),
+            "Uncomparable values: Int32(1), Int64(2)",
+        );
     }
 
     #[test]
@@ -7197,6 +7279,19 @@ mod tests {
     }
 
     #[test]
+    fn test_display_date64_large_values() {
+        assert_eq!(
+            format!("{}", ScalarValue::Date64(Some(790179464505))),
+            "1995-01-15"
+        );
+        // This used to panic, see https://github.com/apache/arrow-rs/issues/7728
+        assert_eq!(
+            format!("{}", ScalarValue::Date64(Some(-790179464505600000))),
+            ""
+        );
+    }
+
+    #[test]
     fn test_struct_display_null() {
         let fields = vec![Field::new("a", DataType::Int32, false)];
         let s = ScalarStructBuilder::new_null(fields);
@@ -7605,5 +7700,16 @@ mod tests {
             .unwrap(),
         ];
         assert!(scalars.iter().all(|s| s.is_null()));
+    }
+
+    // `err.to_string()` depends on backtrace being present (may have backtrace appended)
+    // `err.strip_backtrace()` also depends on backtrace being present (may have "This was likely caused by ..." stripped)
+    fn assert_starts_with(actual: impl AsRef<str>, expected_prefix: impl AsRef<str>) {
+        let actual = actual.as_ref();
+        let expected_prefix = expected_prefix.as_ref();
+        assert!(
+            actual.starts_with(expected_prefix),
+            "Expected '{actual}' to start with '{expected_prefix}'"
+        );
     }
 }

@@ -48,8 +48,10 @@ use datafusion_physical_plan::metrics::ExecutionPlanMetricsSet;
 use datafusion_physical_plan::DisplayFormatType;
 
 use datafusion_execution::parquet::DynEncryptionFactory;
+use datafusion_common::encryption::map_config_decryption_to_decryption;
 use itertools::Itertools;
 use object_store::ObjectStore;
+
 /// Execution plan for reading one or more Parquet files.
 ///
 /// ```text
@@ -486,12 +488,10 @@ impl FileSource for ParquetSource {
                 Arc::new(DefaultParquetFileReaderFactory::new(object_store)) as _
             });
 
-        let file_decryption_properties = self
-            .table_parquet_options()
-            .crypto
-            .file_decryption
-            .as_ref()
-            .map(|props| Arc::new(props.clone().into()));
+        let file_decryption_properties = map_config_decryption_to_decryption(
+            self.table_parquet_options().crypto.file_decryption.as_ref(),
+        )
+        .map(Arc::new);
 
         let coerce_int96 = self
             .table_parquet_options
@@ -517,6 +517,7 @@ impl FileSource for ParquetSource {
             limit: base_config.limit,
             predicate: self.predicate.clone(),
             logical_file_schema: Arc::clone(&base_config.file_schema),
+            partition_fields: base_config.table_partition_cols.clone(),
             metadata_size_hint: self.metadata_size_hint,
             metrics: self.metrics().clone(),
             parquet_file_reader_factory,

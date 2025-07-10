@@ -247,6 +247,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "parquet_encryption")]
     #[tokio::test]
     async fn roundtrip_parquet_with_encryption() -> Result<()> {
         use parquet::encryption::decrypt::FileDecryptionProperties;
@@ -289,7 +290,7 @@ mod tests {
         // Read encrypted parquet
         let ctx: SessionContext = SessionContext::new();
         let read_options =
-            ParquetReadOptions::default().file_decryption_properties(decrypt);
+            ParquetReadOptions::default().file_decryption_properties((&decrypt).into());
 
         ctx.register_parquet("roundtrip_parquet", &tempfile_str, read_options.clone())
             .await?;
