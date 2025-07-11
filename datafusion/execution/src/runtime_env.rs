@@ -160,6 +160,9 @@ impl RuntimeEnv {
         self.object_store_registry.get_store(url.as_ref())
     }
 
+    /// Register a [`DynEncryptionFactory`] with an associated identifier that can be later
+    /// used to configure encryption when reading or writing Parquet.
+    /// If an encryption factory with the same identifier was already registered, it is replaced and returned.
     #[cfg(feature = "parquet_encryption")]
     pub fn register_parquet_encryption_factory(
         &self,
@@ -170,6 +173,7 @@ impl RuntimeEnv {
             .register_factory(id, encryption_factory)
     }
 
+    /// Retrieve a [`DynEncryptionFactory`] by its identifier
     #[cfg(feature = "parquet_encryption")]
     pub fn parquet_encryption_factory(
         &self,

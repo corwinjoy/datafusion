@@ -2392,6 +2392,7 @@ impl From<&FileDecryptionProperties> for ConfigFileDecryptionProperties {
     }
 }
 
+/// Holds implementation-specific options for an encryption factory
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct EncryptionFactoryOptions {
     pub options: HashMap<String, String>,

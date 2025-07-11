@@ -94,12 +94,16 @@ impl<T: EncryptionFactory> DynEncryptionFactory for T {
     }
 }
 
+/// Stores [`EncryptionFactory`] implementations that can be retrieved by a unique string identifier
 #[derive(Clone, Debug, Default)]
 pub struct EncryptionFactoryRegistry {
     factories: DashMap<String, Arc<dyn DynEncryptionFactory>>,
 }
 
 impl EncryptionFactoryRegistry {
+    /// Register a [`DynEncryptionFactory`] with an associated identifier that can be later
+    /// used to configure encryption when reading or writing Parquet.
+    /// If an encryption factory with the same identifier was already registered, it is replaced and returned.
     pub fn register_factory(
         &self,
         id: &str,
@@ -108,6 +112,7 @@ impl EncryptionFactoryRegistry {
         self.factories.insert(id.to_owned(), factory)
     }
 
+    /// Retrieve a [`DynEncryptionFactory`] by its identifier
     pub fn get_factory(&self, id: &str) -> Result<Arc<dyn DynEncryptionFactory>> {
         self.factories
             .get(id)
