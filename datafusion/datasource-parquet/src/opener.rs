@@ -425,8 +425,8 @@ impl ParquetOpener {
         if let Some((encryption_factory, encryption_config)) = &self.encryption_factory {
             if file_decryption_properties.is_none() {
                 file_decryption_properties = encryption_factory
-                    .get_file_decryption_properties(&encryption_config, &file_location)?
-                    .map(|props| Arc::new(props));
+                    .get_file_decryption_properties(encryption_config, file_location)?
+                    .map(Arc::new);
             }
         }
 

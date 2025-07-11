@@ -338,9 +338,8 @@ fn get_file_decryption_properties(
             Some(cfd) => map_config_decryption_to_decryption(Some(cfd)),
             None => match &options.crypto.factory_id {
                 Some(factory_id) => {
-                    let factory = state
-                        .runtime_env()
-                        .parquet_encryption_factory(&factory_id)?;
+                    let factory =
+                        state.runtime_env().parquet_encryption_factory(factory_id)?;
                     factory.get_file_decryption_properties(
                         &options.crypto.factory_options,
                         file_path,
@@ -527,7 +526,7 @@ impl ParquetFormat {
             Ok(source.with_encryption_factory(
                 state
                     .runtime_env()
-                    .parquet_encryption_factory(&encryption_factory_id)?,
+                    .parquet_encryption_factory(encryption_factory_id)?,
             ))
         } else {
             Ok(source)
