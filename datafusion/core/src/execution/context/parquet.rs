@@ -97,8 +97,7 @@ impl SessionContext {
         plan_to_parquet(self.task_ctx(), plan, path, writer_properties).await
     }
 
-    /// Registers a Parquet [`EncryptionFactory`](crate::datasource::physical_plan::parquet::encryption::EncryptionFactory)
-    /// with an associated unique identifier.
+    /// Registers a Parquet [`DynEncryptionFactory`] with an associated unique identifier.
     /// If an encryption factory with the same identifier was already registered, it is replaced and returned.
     #[cfg(feature = "parquet_encryption")]
     pub fn register_parquet_encryption_factory(

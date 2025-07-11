@@ -34,6 +34,7 @@ use parquet_key_management::crypto_factory::{
 };
 use parquet_key_management::kms::KmsConnectionConfig;
 use parquet_key_management::test_kms::TestKmsClientFactory;
+use std::collections::HashSet;
 use std::fmt::Formatter;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -65,7 +66,8 @@ async fn main() -> Result<()> {
     // Register some simple test data
     let a: ArrayRef = Arc::new(StringArray::from(vec!["a", "b", "c", "d"]));
     let b: ArrayRef = Arc::new(Int32Array::from(vec![1, 10, 10, 100]));
-    let batch = RecordBatch::try_from_iter(vec![("a", a), ("b", b)])?;
+    let c: ArrayRef = Arc::new(Int32Array::from(vec![2, 20, 20, 200]));
+    let batch = RecordBatch::try_from_iter(vec![("a", a), ("b", b), ("c", c)])?;
     ctx.register_batch("test_data", batch)?;
 
     {
@@ -95,12 +97,13 @@ async fn write_encrypted(ctx: &SessionContext, tmpdir: &TempDir) -> Result<()> {
     // We specify that we want to use Parquet encryption by setting the identifier of the
     // encryption factory to use and providing the factory specific configuration.
     // Our encryption factory requires specifying the master key identifier to
-    // use for encryption.
+    // use for encryption, and we can optionally configure which columns are encrypted.
     let mut encryption_config = KmsEncryptionConfig::default();
-    encryption_config.footer_key_id = "kf".to_owned();
+    encryption_config.key_id = "kf".to_owned();
+    encryption_config.encrypted_columns = "b,c".to_owned();
     parquet_options
         .crypto
-        .set_factory(ENCRYPTION_FACTORY_ID, &encryption_config);
+        .configure_factory(ENCRYPTION_FACTORY_ID, &encryption_config);
 
     df.write_parquet(
         tmpdir.path().to_str().unwrap(),
@@ -121,25 +124,27 @@ async fn read_encrypted(ctx: &SessionContext, file_path: &std::path::Path) -> Re
     // as key identifiers are stored in the key metadata.
     parquet_options
         .crypto
-        .set_factory(ENCRYPTION_FACTORY_ID, &KmsEncryptionConfig::default());
+        .configure_factory(ENCRYPTION_FACTORY_ID, &KmsEncryptionConfig::default());
 
     let file_format = ParquetFormat::default().with_options(parquet_options);
     let listing_options = ListingOptions::new(Arc::new(file_format));
 
     let table_path = format!("file://{}", file_path.to_str().unwrap());
 
-    let _ = ctx
-        .register_listing_table(
-            "encrypted_parquet_table",
-            &table_path,
-            listing_options.clone(),
-            None,
-            None,
-        )
-        .await?;
+    ctx.register_listing_table(
+        "encrypted_parquet_table",
+        &table_path,
+        listing_options.clone(),
+        None,
+        None,
+    )
+    .await?;
 
-    let df = ctx.sql("SELECT * FROM encrypted_parquet_table").await?;
-    let mut batch_stream = df.execute_stream().await?;
+    let mut batch_stream = ctx
+        .table("encrypted_parquet_table")
+        .await?
+        .execute_stream()
+        .await?;
     println!("Reading encrypted Parquet as a RecordBatch stream");
     while let Some(batch) = batch_stream.next().await {
         let batch = batch?;
@@ -159,7 +164,8 @@ async fn write_encrypted_with_sql(ctx: &SessionContext, tmpdir: &TempDir) -> Res
         STORED AS parquet
         OPTIONS (\
             'format.crypto.factory_id' '{ENCRYPTION_FACTORY_ID}', \
-            'format.crypto.factory_options.footer_key_id' 'kf' \
+            'format.crypto.factory_options.key_id' 'kf', \
+            'format.crypto.factory_options.encrypted_columns' 'b,c' \
         )"
     );
     let _ = ctx.sql(&query).await?.collect().await?;
@@ -196,7 +202,10 @@ async fn read_encrypted_with_sql(
 // Options used to configure our example encryption factory
 extensions_options! {
     struct KmsEncryptionConfig {
-        pub footer_key_id: String, default = "".to_owned()
+        /// Identifier of the encryption key to use
+        pub key_id: String, default = "".to_owned()
+        /// Comma separated list of columns to encrypt
+        pub encrypted_columns: String, default = "".to_owned()
     }
 }
 
@@ -207,7 +216,8 @@ struct KmsEncryptionFactory {
 
 impl std::fmt::Debug for KmsEncryptionFactory {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("KmsEncryptionFactory").finish()
+        f.debug_struct("KmsEncryptionFactory")
+            .finish_non_exhaustive()
     }
 }
 
@@ -225,21 +235,37 @@ impl EncryptionFactory for KmsEncryptionFactory {
     fn get_file_encryption_properties(
         &self,
         config: &KmsEncryptionConfig,
-        _schema: &SchemaRef,
+        schema: &SchemaRef,
         _file_path: &Path,
     ) -> Result<Option<FileEncryptionProperties>> {
-        if config.footer_key_id.is_empty() {
+        if config.key_id.is_empty() {
             return Err(DataFusionError::Configuration(
-                "Footer key id for encryption is not set".to_owned(),
+                "Key id for encryption is not set".to_owned(),
             ));
         };
-        // We could configure per-column keys using the provided schema,
-        // but for simplicity this example uses uniform encryption.
-        let encryption_config =
-            EncryptionConfiguration::builder(config.footer_key_id.clone()).build()?;
-        // Similarly, the KMS connection could be configured from the options if needed, but this
-        // example just uses the default options.
+        // Configure encryption key to use
+        let mut encryption_config_builder =
+            EncryptionConfiguration::builder(config.key_id.clone());
+
+        // Set up per-column encryption.
+        let encrypted_columns: HashSet<&str> =
+            config.encrypted_columns.split(",").collect();
+        if !encrypted_columns.is_empty() {
+            let encrypted_columns: Vec<String> = schema
+                .fields
+                .iter()
+                .filter(|f| encrypted_columns.contains(f.name().as_str()))
+                .map(|f| f.name().clone())
+                .collect();
+            encryption_config_builder = encryption_config_builder
+                .add_column_key(config.key_id.clone(), encrypted_columns);
+        }
+        let encryption_config = encryption_config_builder.build()?;
+
+        // The KMS connection could be configured from the options if needed,
+        // but this example just uses the default options.
         let kms_config = Arc::new(KmsConnectionConfig::default());
+
         Ok(Some(self.crypto_factory.file_encryption_properties(
             kms_config,
             &encryption_config,
