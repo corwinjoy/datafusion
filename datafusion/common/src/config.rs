@@ -2858,6 +2858,36 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "parquet_encryption")]
+    #[test]
+    fn parquet_encryption_factory_config() {
+        let mut parquet_options = crate::config::TableParquetOptions::default();
+
+        assert_eq!(parquet_options.crypto.factory_id, None);
+        assert_eq!(parquet_options.crypto.factory_options.options.len(), 0);
+
+        let mut input_config = TestExtensionConfig::default();
+        input_config
+            .properties
+            .insert("key1".to_string(), "value 1".to_string());
+        input_config
+            .properties
+            .insert("key2".to_string(), "value 2".to_string());
+
+        parquet_options
+            .crypto
+            .configure_factory("example_factory", &input_config);
+
+        assert_eq!(
+            parquet_options.crypto.factory_id,
+            Some("example_factory".to_string())
+        );
+        let factory_options = &parquet_options.crypto.factory_options.options;
+        assert_eq!(factory_options.len(), 2);
+        assert_eq!(factory_options.get("key1"), Some(&"value 1".to_string()));
+        assert_eq!(factory_options.get("key2"), Some(&"value 2".to_string()));
+    }
+
     #[cfg(feature = "parquet")]
     #[test]
     fn parquet_table_options_config_entry() {
