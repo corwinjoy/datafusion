@@ -505,10 +505,13 @@ impl FileSource for ParquetSource {
                 Arc::new(DefaultParquetFileReaderFactory::new(object_store)) as _
             });
 
-        let file_decryption_properties = map_config_decryption_to_decryption(
-            self.table_parquet_options().crypto.file_decryption.as_ref(),
-        )
-        .map(Arc::new);
+        let file_decryption_properties = self
+            .table_parquet_options()
+            .crypto
+            .file_decryption
+            .as_ref()
+            .map(map_config_decryption_to_decryption)
+            .map(Arc::new);
 
         let coerce_int96 = self
             .table_parquet_options

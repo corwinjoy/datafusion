@@ -46,14 +46,14 @@ pub fn map_encryption_to_config_encryption(
 
 #[cfg(feature = "parquet_encryption")]
 pub fn map_config_decryption_to_decryption(
-    decryption: Option<&ConfigFileDecryptionProperties>,
-) -> Option<FileDecryptionProperties> {
-    decryption.map(|fd| fd.clone().into())
+    decryption: &ConfigFileDecryptionProperties,
+) -> FileDecryptionProperties {
+    decryption.clone().into()
 }
 
 #[cfg(not(feature = "parquet_encryption"))]
 pub fn map_config_decryption_to_decryption(
-    _decryption: Option<&ConfigFileDecryptionProperties>,
-) -> Option<FileDecryptionProperties> {
-    None
+    _decryption: &ConfigFileDecryptionProperties,
+) -> FileDecryptionProperties {
+    FileDecryptionProperties {}
 }

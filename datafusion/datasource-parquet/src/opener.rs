@@ -418,19 +418,19 @@ impl ParquetOpener {
         &self,
         file_location: &object_store::path::Path,
     ) -> Result<Option<Arc<FileDecryptionProperties>>> {
-        let mut file_decryption_properties = self.file_decryption_properties.clone();
-
         // Creating props is delayed until here so that the file url/path is available,
-        // and we can handle errors.
-        if let Some((encryption_factory, encryption_config)) = &self.encryption_factory {
-            if file_decryption_properties.is_none() {
-                file_decryption_properties = encryption_factory
-                    .get_file_decryption_properties(encryption_config, file_location)?
-                    .map(Arc::new);
+        // and we can handle errors from the encryption factory.
+        match &self.file_decryption_properties {
+            Some(file_decryption_properties) => {
+                Ok(Some(Arc::clone(file_decryption_properties)))
             }
+            None => match &self.encryption_factory {
+                Some((encryption_factory, encryption_config)) => Ok(encryption_factory
+                    .get_file_decryption_properties(encryption_config, file_location)?
+                    .map(Arc::new)),
+                None => Ok(None),
+            },
         }
-
-        Ok(file_decryption_properties)
     }
 }
 
